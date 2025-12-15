@@ -1,16 +1,9 @@
 import { App } from "@slack/bolt";
 import { config } from "./config";
 import { getAllOncallEngineers } from "./incidentIo";
+import { getOpenIssues, PylonIssue } from "./pylon";
 
-const CHECK_MARK_EMOJI = "white_check_mark";
 const CUSTOMER_ALERTS_CHANNEL = "customer-alerts";
-
-interface ThreadMessage {
-  ts: string;
-  text: string;
-  user?: string;
-  permalink?: string;
-}
 
 /**
  * finds the channel id for #customer-alerts
@@ -40,137 +33,93 @@ async function getCustomerAlertsChannelId(app: App): Promise<string> {
 }
 
 /**
- * fetches messages from #customer-alerts posted today
+ * builds a slack thread link from channel id and message ts
  */
-async function getTodaysMessages(
-  app: App,
-  channelId: string
-): Promise<ThreadMessage[]> {
-  const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const oldestTs = (startOfDay.getTime() / 1000).toString();
+function getSlackThreadUrl(channelId: string, messageTs: string): string {
+  // slack deep links use the message ts without the dot
+  const tsForUrl = messageTs.replace(".", "");
+  return `https://buildwithfern.slack.com/archives/${channelId}/p${tsForUrl}`;
+}
 
-  const result = await app.client.conversations.history({
-    token: config.slack.botToken,
-    channel: channelId,
-    oldest: oldestTs,
-    limit: 200,
-  });
+/**
+ * formats a single issue for the reminder message
+ */
+function formatIssue(issue: PylonIssue, index: number): string {
+  const stateLabel = formatState(issue.state);
 
-  if (!result.messages) {
-    return [];
+  // build the link - prefer slack thread, fall back to issue number
+  let link: string;
+  if (issue.slack?.channel_id && issue.slack?.message_ts) {
+    const slackUrl = getSlackThreadUrl(issue.slack.channel_id, issue.slack.message_ts);
+    link = `<${slackUrl}|#${issue.number}>`;
+  } else {
+    link = `#${issue.number}`;
   }
 
-  // filter to only parent messages (not thread replies)
-  return result.messages
-    .filter((msg) => !msg.thread_ts || msg.thread_ts === msg.ts)
-    .map((msg) => ({
-      ts: msg.ts!,
-      text: msg.text || "",
-      user: msg.user,
-    }));
+  // only include account name if we have one
+  const accountName = issue.account?.name || issue.requester?.email;
+  const accountPart = accountName ? ` — ${accountName}` : "";
+
+  return `  ${index + 1}. ${link}${accountPart} — ${issue.title} (${stateLabel})`;
 }
 
 /**
- * checks if a message has been marked with ✅
+ * formats issue state for display
  */
-async function hasCheckMarkReaction(
-  app: App,
-  channelId: string,
-  messageTs: string
-): Promise<boolean> {
-  const result = await app.client.reactions.get({
-    token: config.slack.botToken,
-    channel: channelId,
-    timestamp: messageTs,
-  });
+function formatState(state: string): string {
+  const stateLabels: Record<string, string> = {
+    new: "new",
+    waiting_on_you: "waiting on you",
+    waiting_on_customer: "waiting on customer",
+    on_hold: "on hold",
+  };
+  return stateLabels[state] || state;
+}
 
-  if (!result.message || !("reactions" in result.message)) {
-    return false;
+/**
+ * builds the reminder message for open issues (without tagging on-call)
+ * returns null if no open issues
+ */
+export async function getOpenThreadReminderMessage(): Promise<string | null> {
+  const openIssues = await getOpenIssues();
+
+  if (openIssues.length === 0) {
+    return null;
   }
 
-  const reactions = result.message.reactions || [];
-  return reactions.some((reaction) => reaction.name === CHECK_MARK_EMOJI);
+  const issueList = openIssues.map((issue, index) => formatIssue(issue, index)).join("\n");
+
+  return `🐓 *end of day reminder*\n\nthe following ${openIssues.length} issue(s) from today are still open:\n\n${issueList}\n\nplease review and resolve these issues.`;
 }
 
 /**
- * gets the permalink for a message
- */
-async function getMessagePermalink(
-  app: App,
-  channelId: string,
-  messageTs: string
-): Promise<string> {
-  const result = await app.client.chat.getPermalink({
-    token: config.slack.botToken,
-    channel: channelId,
-    message_ts: messageTs,
-  });
-
-  return result.permalink || "";
-}
-
-/**
- * finds all open (unmarked) threads from today
- */
-async function findOpenThreads(
-  app: App,
-  channelId: string
-): Promise<ThreadMessage[]> {
-  const messages = await getTodaysMessages(app, channelId);
-  const openThreads: ThreadMessage[] = [];
-
-  for (const message of messages) {
-    const hasCheckMark = await hasCheckMarkReaction(app, channelId, message.ts);
-    if (!hasCheckMark) {
-      const permalink = await getMessagePermalink(app, channelId, message.ts);
-      openThreads.push({
-        ...message,
-        permalink,
-      });
-    }
-  }
-
-  return openThreads;
-}
-
-/**
- * sends the end-of-day reminder with open threads
+ * sends the end-of-day reminder with open issues to customer-alerts
  */
 export async function sendOpenThreadReminder(app: App): Promise<void> {
-  const channelId = await getCustomerAlertsChannelId(app);
-  const openThreads = await findOpenThreads(app, channelId);
+  const customerAlertsChannelId = await getCustomerAlertsChannelId(app);
+  const openIssues = await getOpenIssues();
 
-  if (openThreads.length === 0) {
-    console.log("no open threads found. skipping reminder.");
+  if (openIssues.length === 0) {
+    console.log("no open issues found. skipping reminder.");
     return;
   }
 
+  const issueList = openIssues.map((issue, index) => formatIssue(issue, index)).join("\n");
+
   const oncallEngineerIds = await getAllOncallEngineers();
-
-  const threadList = openThreads
-    .map((thread, index) => {
-      const preview =
-        thread.text.length > 100
-          ? thread.text.substring(0, 100) + "..."
-          : thread.text;
-      return `${index + 1}. <${thread.permalink}|thread>: ${preview}`;
-    })
-    .join("\n");
-
   const oncallMention =
     oncallEngineerIds.length > 0
-      ? oncallEngineerIds.map((id) => `<@${id}>`).join(" ")
-      : "on-call engineers";
+      ? oncallEngineerIds.map((id) => `<@${id}>`).join(" ") + " "
+      : "on-call engineers ";
 
-  const message = `🐓 *end of day reminder*\n\n${oncallMention} the following ${openThreads.length} thread(s) in <#${channelId}> have not been marked with ✅:\n\n${threadList}\n\nplease review and resolve these threads.`;
+  const message = `🐓 *end of day reminder*\n\n${oncallMention}the following ${openIssues.length} issue(s) from today are still open:\n\n${issueList}\n\nplease review and resolve these issues.`;
 
   await app.client.chat.postMessage({
     token: config.slack.botToken,
-    channel: channelId,
+    channel: customerAlertsChannelId,
     text: message,
     unfurl_links: false,
   });
 
-  console.log(`sent reminder for ${openThreads.length} open thread(s).`);
+  console.log(`sent reminder for ${openIssues.length} open issue(s).`);
 }

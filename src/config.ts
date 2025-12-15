@@ -24,4 +24,7 @@ export const config = {
       askFern: requireEnv("INCIDENT_IO_ASK_FERN_SCHEDULE_ID"),
     },
   },
+  pylon: {
+    apiToken: requireEnv("PYLON_API_TOKEN"),
+  },
 };

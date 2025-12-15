@@ -1,7 +1,10 @@
 import { App } from "@slack/bolt";
 import cron from "node-cron";
 import { config } from "./config";
-import { sendOpenThreadReminder } from "./openThreadReminder";
+import {
+  getOpenThreadReminderMessage,
+  sendOpenThreadReminder,
+} from "./openThreadReminder";
 
 const app = new App({
   token: config.slack.botToken,
@@ -29,9 +32,14 @@ app.command("/rooster-status", async ({ ack, respond }) => {
 // manual trigger for testing
 app.command("/rooster-check", async ({ ack, respond }) => {
   await ack();
-  await respond("🐓 running open thread check...");
+  await respond("🐓 checking open issues...");
   try {
-    await sendOpenThreadReminder(app);
+    const message = await getOpenThreadReminderMessage();
+    if (message) {
+      await respond(message);
+    } else {
+      await respond("✅ no open issues found!");
+    }
   } catch (error) {
     console.error("error during manual check:", error);
     await respond("❌ error running the check. see logs for details.");
