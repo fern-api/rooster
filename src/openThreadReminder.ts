@@ -47,27 +47,26 @@ function getSlackThreadUrl(channelId: string, messageTs: string): string {
 function formatIssue(issue: PylonIssue, index: number): string {
   const stateLabel = formatState(issue.state);
 
-  // build the link - prefer slack, fall back to pylon link
-  let link: string;
+  // build links - show both slack and pylon when available
+  const links: string[] = [];
   if (issue.slack?.channel_id && issue.slack?.message_ts) {
     const ts = issue.slack.thread_ts || issue.slack.message_ts;
     const slackUrl = getSlackThreadUrl(issue.slack.channel_id, ts);
-    link = `<${slackUrl}|#${issue.number}>`;
-  } else if (issue.link) {
-    link = `<${issue.link}|#${issue.number}>`;
-  } else {
-    link = `#${issue.number}`;
+    links.push(`<${slackUrl}|slack>`);
+  }
+  if (issue.link) {
+    links.push(`<${issue.link}|pylon>`);
   }
 
-  // only include account name if we have one
+  const linksPart = links.length > 0 ? ` (${links.join(" | ")})` : "";
+
+  // build description from account and/or title
   const accountName = issue.account?.name;
-  const accountPart = accountName ? ` — ${accountName}` : "";
-
-  // only include title if we have one
   const title = issue.title?.trim();
-  const titlePart = title ? ` — ${title}` : "";
+  const descParts = [accountName, title].filter(Boolean);
+  const description = descParts.length > 0 ? ` ${descParts.join(" — ")}` : "";
 
-  return `  ${index + 1}. ${link}${accountPart}${titlePart} (${stateLabel})`;
+  return `  ${index + 1}.${description}${linksPart} (${stateLabel})`;
 }
 
 /**
