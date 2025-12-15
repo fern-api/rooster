@@ -18,6 +18,10 @@ export const config = {
   },
   incidentIo: {
     apiKey: requireEnv("INCIDENT_IO_API_KEY"),
-    scheduleId: requireEnv("INCIDENT_IO_SCHEDULE_ID"),
+    scheduleIds: {
+      sdk: requireEnv("INCIDENT_IO_SDK_SCHEDULE_ID"),
+      docs: requireEnv("INCIDENT_IO_DOCS_SCHEDULE_ID"),
+      askFern: requireEnv("INCIDENT_IO_ASK_FERN_SCHEDULE_ID"),
+    },
   },
 };

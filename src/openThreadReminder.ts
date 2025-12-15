@@ -1,6 +1,6 @@
 import { App } from "@slack/bolt";
 import { config } from "./config";
-import { getCurrentOncallEngineer } from "./incidentIo";
+import { getAllOncallEngineers } from "./incidentIo";
 
 const CHECK_MARK_EMOJI = "white_check_mark";
 const CUSTOMER_ALERTS_CHANNEL = "customer-alerts";
@@ -146,7 +146,7 @@ export async function sendOpenThreadReminder(app: App): Promise<void> {
     return;
   }
 
-  const oncallEngineerId = await getCurrentOncallEngineer();
+  const oncallEngineerIds = await getAllOncallEngineers();
 
   const threadList = openThreads
     .map((thread, index) => {
@@ -158,9 +158,10 @@ export async function sendOpenThreadReminder(app: App): Promise<void> {
     })
     .join("\n");
 
-  const oncallMention = oncallEngineerId
-    ? `<@${oncallEngineerId}>`
-    : "On-call engineer";
+  const oncallMention =
+    oncallEngineerIds.length > 0
+      ? oncallEngineerIds.map((id) => `<@${id}>`).join(" ")
+      : "on-call engineers";
 
   const message = `🐓 *end of day reminder*\n\n${oncallMention} the following ${openThreads.length} thread(s) in <#${channelId}> have not been marked with ✅:\n\n${threadList}\n\nplease review and resolve these threads.`;
 
