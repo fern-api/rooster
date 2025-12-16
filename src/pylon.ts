@@ -36,6 +36,72 @@ interface PylonSearchResponse {
 
 const OPEN_STATES = ["new", "waiting_on_you", "waiting_on_customer", "on_hold"];
 
+// Cache for account names to avoid repeated API calls
+const accountNameCache = new Map<string, string>();
+
+interface PylonAccount {
+  id: string;
+  name: string;
+}
+
+/**
+ * fetches account details from pylon by account id
+ */
+async function fetchAccount(accountId: string): Promise<PylonAccount | null> {
+  if (accountNameCache.has(accountId)) {
+    return { id: accountId, name: accountNameCache.get(accountId)! };
+  }
+
+  try {
+    const response = await fetch(`${PYLON_API_BASE}/accounts/${accountId}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${config.pylon.apiToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      console.log(`Could not fetch account ${accountId}: ${response.status}`);
+      return null;
+    }
+
+    const data = (await response.json()) as { data?: { name?: string } };
+    if (data.data?.name) {
+      accountNameCache.set(accountId, data.data.name);
+      return { id: accountId, name: data.data.name };
+    }
+  } catch (error) {
+    console.log(`Error fetching account ${accountId}:`, error);
+  }
+
+  return null;
+}
+
+/**
+ * fetches account names for all issues, returns a map of account_id -> account_name
+ */
+export async function getAccountNamesForIssues(issues: PylonIssue[]): Promise<Map<string, string>> {
+  const accountIds = new Set<string>();
+  for (const issue of issues) {
+    if (issue.account?.id) {
+      accountIds.add(issue.account.id);
+    }
+  }
+
+  const accountNames = new Map<string, string>();
+  await Promise.all(
+    Array.from(accountIds).map(async (accountId) => {
+      const account = await fetchAccount(accountId);
+      if (account?.name) {
+        accountNames.set(accountId, account.name);
+      }
+    })
+  );
+
+  return accountNames;
+}
+
 /**
  * fetches issues from pylon created within the last N days
  */
@@ -101,7 +167,13 @@ export async function getUnrespondedIssues(days: number = 1): Promise<PylonIssue
 
   console.log(`\nIncluded issues:`);
   for (const issue of trulyUnresponded) {
-    console.log(`  - #${issue.number}: ${issue.title || "(no title)"}`);
+    let accountInfo = "no account";
+    if (issue.account) {
+      accountInfo = issue.account.name ? `account: ${issue.account.name}` : `account id: ${issue.account.id} (no name)`;
+    }
+    const requesterInfo = issue.requester?.email ? `requester: ${issue.requester.email}` : "no requester";
+    const channelInfo = issue.slack?.channel_id ? `channel: ${issue.slack.channel_id}` : "no channel";
+    console.log(`  - #${issue.number}: ${issue.title || "(no title)"} (${accountInfo}, ${requesterInfo}, ${channelInfo})`);
   }
   console.log(`\n=== END DEBUG ===\n`);
 

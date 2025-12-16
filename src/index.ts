@@ -52,7 +52,7 @@ app.command("/rooster", async ({ ack, respond, command }) => {
             await respond("✅ no unresponded threads found!");
           }
         } else {
-          const message = await getUnrespondedThreadsMessage(days);
+          const message = await getUnrespondedThreadsMessage(app, days);
           if (message) {
             await respond(message);
           } else {
