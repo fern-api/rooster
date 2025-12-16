@@ -35,6 +35,7 @@ interface PylonSearchResponse {
 }
 
 const OPEN_STATES = ["new", "waiting_on_you", "waiting_on_customer", "on_hold"];
+const OPEN_NON_NEW_STATES = ["waiting_on_you"];
 
 // Cache for account names to avoid repeated API calls
 const accountNameCache = new Map<string, string>();
@@ -139,6 +140,22 @@ async function fetchIssues(days: number = 1): Promise<PylonIssue[]> {
 export async function getOpenIssues(days: number = 1): Promise<PylonIssue[]> {
   const issues = await fetchIssues(days);
   return issues.filter((issue) => OPEN_STATES.includes(issue.state));
+}
+
+/**
+ * fetches issues with state "new" (unassigned) from the last N days
+ */
+export async function getNewIssues(days: number = 1): Promise<PylonIssue[]> {
+  const issues = await fetchIssues(days);
+  return issues.filter((issue) => issue.state === "new");
+}
+
+/**
+ * fetches open issues with state "waiting_on_you" from the last N days
+ */
+export async function getOpenNonNewIssues(days: number = 1): Promise<PylonIssue[]> {
+  const issues = await fetchIssues(days);
+  return issues.filter((issue) => OPEN_NON_NEW_STATES.includes(issue.state));
 }
 
 /**

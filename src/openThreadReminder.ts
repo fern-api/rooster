@@ -1,7 +1,7 @@
 import { App } from "@slack/bolt";
 import { config } from "./config";
 import { getAllOncallEngineers } from "./incidentIo";
-import { getAccountNamesForIssues, getOpenIssues, getUnrespondedIssues, PylonIssue } from "./pylon";
+import { getAccountNamesForIssues, getNewIssues, getOpenIssues, getOpenNonNewIssues, getUnrespondedIssues, PylonIssue } from "./pylon";
 
 const CUSTOMER_ALERTS_CHANNEL = "customer-alerts";
 
@@ -184,6 +184,116 @@ export async function getUnrespondedThreadsMessage(app?: App, days: number = 1):
   const timeframe = days === 1 ? "today" : `the last ${days} days`;
 
   return `*unresponded threads*\n\nthe following ${unrespondedIssues.length} thread(s) from ${timeframe} have not been responded to:\n\n${issueList}`;
+}
+
+export interface CheckOptions {
+  showNew?: boolean;
+  showOpen?: boolean;
+  days?: number;
+}
+
+/**
+ * builds the message for the check command with new and/or open issues
+ * returns null if no issues found matching the criteria
+ */
+export async function getCheckMessage(app?: App, options: CheckOptions = {}): Promise<string | null> {
+  const { showNew = true, showOpen = true, days = 1 } = options;
+  const timeframe = days === 1 ? "today" : `the last ${days} days`;
+
+  const [newIssues, openIssues] = await Promise.all([
+    showNew ? getNewIssues(days) : Promise.resolve([]),
+    showOpen ? getOpenNonNewIssues(days) : Promise.resolve([]),
+  ]);
+
+  if (newIssues.length === 0 && openIssues.length === 0) {
+    return null;
+  }
+
+  const allIssues = [...newIssues, ...openIssues];
+  const [channelNames, accountNames] = await Promise.all([
+    app ? getChannelNamesForIssues(app, allIssues) : Promise.resolve(undefined),
+    getAccountNamesForIssues(allIssues),
+  ]);
+
+  const sections: string[] = [];
+
+  if (showNew && newIssues.length > 0) {
+    const newList = newIssues.map((issue, index) => formatIssue(issue, index, { channelNames, accountNames })).join("\n");
+    sections.push(`*new issues (${newIssues.length})*\n${newList}`);
+  }
+
+  if (showOpen && openIssues.length > 0) {
+    const openList = openIssues.map((issue, index) => formatIssue(issue, index, { channelNames, accountNames })).join("\n");
+    sections.push(`*waiting on you (${openIssues.length})*\n${openList}`);
+  }
+
+  if (sections.length === 0) {
+    return null;
+  }
+
+  const header = `*issues from ${timeframe}*\n\n`;
+  return header + sections.join("\n\n");
+}
+
+/**
+ * sends the check message to customer-alerts
+ * returns true if message was sent, false if no issues found
+ */
+export async function sendCheckMessage(app: App, tagOncall: boolean = false, options: CheckOptions = {}): Promise<boolean> {
+  const customerAlertsChannelId = await getCustomerAlertsChannelId(app);
+  const { showNew = true, showOpen = true, days = 1 } = options;
+  const timeframe = days === 1 ? "today" : `the last ${days} days`;
+
+  const [newIssues, openIssues] = await Promise.all([
+    showNew ? getNewIssues(days) : Promise.resolve([]),
+    showOpen ? getOpenNonNewIssues(days) : Promise.resolve([]),
+  ]);
+
+  if (newIssues.length === 0 && openIssues.length === 0) {
+    console.log("no issues found matching criteria. skipping message.");
+    return false;
+  }
+
+  const allIssues = [...newIssues, ...openIssues];
+  const [channelNames, accountNames] = await Promise.all([
+    getChannelNamesForIssues(app, allIssues),
+    getAccountNamesForIssues(allIssues),
+  ]);
+
+  const sections: string[] = [];
+
+  if (showNew && newIssues.length > 0) {
+    const newList = newIssues.map((issue, index) => formatIssue(issue, index, { channelNames, accountNames })).join("\n");
+    sections.push(`*new issues (${newIssues.length})*\n${newList}`);
+  }
+
+  if (showOpen && openIssues.length > 0) {
+    const openList = openIssues.map((issue, index) => formatIssue(issue, index, { channelNames, accountNames })).join("\n");
+    sections.push(`*waiting on you (${openIssues.length})*\n${openList}`);
+  }
+
+  let oncallMention = "";
+  if (tagOncall) {
+    const oncallEngineerIds = await getAllOncallEngineers();
+    oncallMention =
+      oncallEngineerIds.length > 0
+        ? oncallEngineerIds.map((id) => `<@${id}>`).join(" ") + " "
+        : "";
+  }
+
+  const header = `*issues from ${timeframe}*\n\n`;
+  const message = `${oncallMention}${header}${sections.join("\n\n")}`;
+
+  await app.client.chat.postMessage({
+    token: config.slack.botToken,
+    channel: customerAlertsChannelId,
+    text: message,
+    unfurl_links: false,
+  });
+
+  const totalCount = newIssues.length + openIssues.length;
+  console.log(`sent check message for ${totalCount} issue(s).`);
+  return true;
 }
 
 /**
