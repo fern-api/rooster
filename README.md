@@ -32,3 +32,6 @@ pnpm run dev
   - add `--remind` to tag on-call engineers (implies --channel)
 
 ## more functions coming soon...
+- alert for stale PRs
+- alert for tagged, open issues
+- alert immediately for high-risk messages (e.g. "broken", "down", "inaccessible")
