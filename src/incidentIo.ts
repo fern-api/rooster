@@ -78,12 +78,11 @@ async function getOncallEngineerForSchedule(
  * returns an array of unique slack user ids
  */
 export async function getAllOncallEngineers(): Promise<string[]> {
-  const { sdk, docs, askFern } = config.incidentIo.scheduleIds;
+  const { sdk, docs } = config.incidentIo.scheduleIds;
 
   const results = await Promise.all([
     getOncallEngineerForSchedule(sdk),
     getOncallEngineerForSchedule(docs),
-    getOncallEngineerForSchedule(askFern),
   ]);
 
   // filter out nulls and deduplicate

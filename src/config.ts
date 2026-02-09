@@ -21,7 +21,6 @@ export const config = {
     scheduleIds: {
       sdk: requireEnv("INCIDENT_IO_SDK_SCHEDULE_ID"),
       docs: requireEnv("INCIDENT_IO_DOCS_SCHEDULE_ID"),
-      askFern: requireEnv("INCIDENT_IO_ASK_FERN_SCHEDULE_ID"),
     },
   },
   pylon: {
