@@ -14,6 +14,10 @@ export interface PylonIssue {
     id: string;
     name?: string;
   };
+  assignee?: {
+    email: string;
+    id: string;
+  };
   requester?: {
     email: string;
     id: string;
@@ -39,6 +43,9 @@ const OPEN_NON_NEW_STATES = ["waiting_on_you"];
 
 // Cache for account names to avoid repeated API calls
 const accountNameCache = new Map<string, string>();
+
+// Cache for Pylon user emails looked up by user id
+const pylonUserEmailCache = new Map<string, string>();
 
 interface PylonAccount {
   id: string;
@@ -101,6 +108,64 @@ export async function getAccountNamesForIssues(issues: PylonIssue[]): Promise<Ma
   );
 
   return accountNames;
+}
+
+/**
+ * fetches a pylon user's email by their user id, with caching
+ */
+async function fetchPylonUserEmail(userId: string): Promise<string | null> {
+  if (pylonUserEmailCache.has(userId)) {
+    return pylonUserEmailCache.get(userId)!;
+  }
+
+  try {
+    const response = await fetch(`${PYLON_API_BASE}/users/${userId}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${config.pylon.apiToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      console.log(`Could not fetch pylon user ${userId}: ${response.status}`);
+      return null;
+    }
+
+    const data = (await response.json()) as { data?: { email?: string } };
+    if (data.data?.email) {
+      pylonUserEmailCache.set(userId, data.data.email);
+      return data.data.email;
+    }
+  } catch (error) {
+    console.log(`Error fetching pylon user ${userId}:`, error);
+  }
+
+  return null;
+}
+
+/**
+ * fetches assignee emails for all issues, returns a map of assignee_id -> email
+ */
+export async function getAssigneeEmailsForIssues(issues: PylonIssue[]): Promise<Map<string, string>> {
+  const assigneeIds = new Set<string>();
+  for (const issue of issues) {
+    if (issue.assignee?.id) {
+      assigneeIds.add(issue.assignee.id);
+    }
+  }
+
+  const assigneeEmails = new Map<string, string>();
+  await Promise.all(
+    Array.from(assigneeIds).map(async (assigneeId) => {
+      const email = await fetchPylonUserEmail(assigneeId);
+      if (email) {
+        assigneeEmails.set(assigneeId, email);
+      }
+    })
+  );
+
+  return assigneeEmails;
 }
 
 /**
