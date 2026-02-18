@@ -38,7 +38,6 @@ interface PylonSearchResponse {
   };
 }
 
-const OPEN_STATES = ["new", "waiting_on_you", "waiting_on_customer", "on_hold"];
 const OPEN_NON_NEW_STATES = ["waiting_on_you"];
 
 // Cache for account names to avoid repeated API calls
@@ -197,14 +196,6 @@ async function fetchIssues(days: number = 1): Promise<PylonIssue[]> {
 
   const data = (await response.json()) as PylonSearchResponse;
   return data.data;
-}
-
-/**
- * fetches open issues from pylon created within the last N days
- */
-export async function getOpenIssues(days: number = 1): Promise<PylonIssue[]> {
-  const issues = await fetchIssues(days);
-  return issues.filter((issue) => OPEN_STATES.includes(issue.state));
 }
 
 /**

@@ -1,12 +1,16 @@
 import { App } from "@slack/bolt";
 import { config } from "./config";
-import { getAllOncallEngineers } from "./incidentIo";
-import { getAccountNamesForIssues, getAssigneeEmailsForIssues, getNewIssues, getOpenIssues, getOpenNonNewIssues, getUnrespondedIssues, PylonIssue } from "./pylon";
+import { getAccountNamesForIssues, getAssigneeEmailsForIssues, getNewIssues, getOpenNonNewIssues, getUnrespondedIssues, PylonIssue } from "./pylon";
 
 const CUSTOMER_ALERTS_CHANNEL = "customer-alerts";
 
+const ONCALL_HANDLES = ["docs-on-call", "sdk-on-call", "sales-eng-on-call"];
+
 // Cache for channel names to avoid repeated API calls
 const channelNameCache = new Map<string, string>();
+
+// Cache for user group IDs looked up by handle
+const userGroupIdCache = new Map<string, string>();
 
 // Cache for Slack user IDs looked up by email
 const slackUserIdCache = new Map<string, string>();
@@ -36,6 +40,37 @@ async function getCustomerAlertsChannelId(app: App): Promise<string> {
   } while (cursor);
 
   throw new Error(`Channel #${CUSTOMER_ALERTS_CHANNEL} not found`);
+}
+
+/**
+ * looks up Slack user group IDs by handle and returns mention strings
+ */
+async function getOncallMentions(app: App): Promise<string> {
+  // fetch all user groups once if cache is empty
+  if (userGroupIdCache.size === 0) {
+    try {
+      const result = await app.client.usergroups.list({
+        token: config.slack.botToken,
+      });
+
+      for (const group of result.usergroups ?? []) {
+        if (group.handle && group.id) {
+          userGroupIdCache.set(group.handle, group.id);
+        }
+      }
+    } catch (error) {
+      console.error("error fetching user groups:", error);
+    }
+  }
+
+  const mentions = ONCALL_HANDLES
+    .map((handle) => {
+      const groupId = userGroupIdCache.get(handle);
+      return groupId ? `<!subteam^${groupId}>` : `@${handle}`;
+    })
+    .join(" ");
+
+  return mentions + " ";
 }
 
 /**
@@ -188,59 +223,6 @@ function formatIssue(issue: PylonIssue, index: number, options?: FormatOptions):
 }
 
 /**
- * formats issue state for display
- */
-function formatState(state: string): string {
-  const stateLabels: Record<string, string> = {
-    new: "new",
-    waiting_on_you: "waiting on you",
-    waiting_on_customer: "waiting on customer",
-    on_hold: "on hold",
-  };
-  return stateLabels[state] || state;
-}
-
-/**
- * builds the reminder message for open issues (without tagging on-call)
- * returns null if no open issues
- */
-export async function getOpenThreadReminderMessage(app?: App): Promise<string | null> {
-  const openIssues = await getOpenIssues();
-
-  if (openIssues.length === 0) {
-    return null;
-  }
-
-  const [channelNames, accountNames, assigneeSlackIds] = await Promise.all([
-    app ? getChannelNamesForIssues(app, openIssues) : Promise.resolve(undefined),
-    getAccountNamesForIssues(openIssues),
-    app ? getAssigneeSlackIdsForIssues(app, openIssues) : Promise.resolve(undefined),
-  ]);
-
-  // group issues by state
-  const issuesByState = new Map<string, PylonIssue[]>();
-  for (const issue of openIssues) {
-    if (!issuesByState.has(issue.state)) {
-      issuesByState.set(issue.state, []);
-    }
-    issuesByState.get(issue.state)!.push(issue);
-  }
-
-  const sections: string[] = [];
-  const stateOrder = ["new", "waiting_on_you", "waiting_on_customer", "on_hold"];
-  for (const state of stateOrder) {
-    const issues = issuesByState.get(state);
-    if (issues && issues.length > 0) {
-      const stateLabel = formatState(state);
-      const issueList = issues.map((issue, index) => formatIssue(issue, index, { channelNames, accountNames, assigneeSlackIds })).join("\n");
-      sections.push(`*${stateLabel} (${issues.length})*\n${issueList}`);
-    }
-  }
-
-  return `*end of day reminder*\n\nthe following ${openIssues.length} issue(s) from today are still open:\n\n${sections.join("\n\n")}\n\nplease review and resolve these issues.`;
-}
-
-/**
  * builds the message for unresponded issues (threads with no response at all)
  * returns null if no unresponded issues
  */
@@ -350,14 +332,7 @@ export async function sendCheckMessage(app: App, tagOncall: boolean = false, opt
     sections.push(`*waiting on you (${openIssues.length})*\n${openList}`);
   }
 
-  let oncallMention = "";
-  if (tagOncall) {
-    const oncallEngineerIds = await getAllOncallEngineers();
-    oncallMention =
-      oncallEngineerIds.length > 0
-        ? oncallEngineerIds.map((id) => `<@${id}>`).join(" ") + " "
-        : "";
-  }
+  const oncallMention = tagOncall ? await getOncallMentions(app) : "";
 
   const header = `*issues from ${timeframe}*\n\n`;
   const message = `${oncallMention}${header}${sections.join("\n\n")}`;
@@ -372,62 +347,6 @@ export async function sendCheckMessage(app: App, tagOncall: boolean = false, opt
   const totalCount = newIssues.length + openIssues.length;
   console.log(`sent check message for ${totalCount} issue(s).`);
   return true;
-}
-
-/**
- * sends the end-of-day reminder with open issues to customer-alerts, grouped by status
- */
-export async function sendOpenThreadReminder(app: App): Promise<void> {
-  const customerAlertsChannelId = await getCustomerAlertsChannelId(app);
-  const openIssues = await getOpenIssues();
-
-  if (openIssues.length === 0) {
-    console.log("no open issues found. skipping reminder.");
-    return;
-  }
-
-  const [channelNames, accountNames, assigneeSlackIds] = await Promise.all([
-    getChannelNamesForIssues(app, openIssues),
-    getAccountNamesForIssues(openIssues),
-    getAssigneeSlackIdsForIssues(app, openIssues),
-  ]);
-
-  const oncallEngineerIds = await getAllOncallEngineers();
-  const oncallMention =
-    oncallEngineerIds.length > 0
-      ? oncallEngineerIds.map((id) => `<@${id}>`).join(" ") + " "
-      : "on-call engineers ";
-
-  // group issues by state
-  const issuesByState = new Map<string, PylonIssue[]>();
-  for (const issue of openIssues) {
-    if (!issuesByState.has(issue.state)) {
-      issuesByState.set(issue.state, []);
-    }
-    issuesByState.get(issue.state)!.push(issue);
-  }
-
-  const sections: string[] = [];
-  const stateOrder = ["new", "waiting_on_you", "waiting_on_customer", "on_hold"];
-  for (const state of stateOrder) {
-    const issues = issuesByState.get(state);
-    if (issues && issues.length > 0) {
-      const stateLabel = formatState(state);
-      const issueList = issues.map((issue, index) => formatIssue(issue, index, { channelNames, accountNames, assigneeSlackIds })).join("\n");
-      sections.push(`*${stateLabel} (${issues.length})*\n${issueList}`);
-    }
-  }
-
-  const message = `*end of day reminder*\n\n${oncallMention}the following ${openIssues.length} issue(s) from today are still open:\n\n${sections.join("\n\n")}\n\nplease review and resolve these issues.`;
-
-  await app.client.chat.postMessage({
-    token: config.slack.botToken,
-    channel: customerAlertsChannelId,
-    text: message,
-    unfurl_links: false,
-  });
-
-  console.log(`sent reminder for ${openIssues.length} open issue(s).`);
 }
 
 /**
@@ -450,14 +369,7 @@ export async function sendUnrespondedThreadsReminder(app: App, tagOncall: boolea
   ]);
   const issueList = unrespondedIssues.map((issue, index) => formatIssue(issue, index, { channelNames, accountNames, assigneeSlackIds })).join("\n");
 
-  let oncallMention = "";
-  if (tagOncall) {
-    const oncallEngineerIds = await getAllOncallEngineers();
-    oncallMention =
-      oncallEngineerIds.length > 0
-        ? oncallEngineerIds.map((id) => `<@${id}>`).join(" ") + " "
-        : "";
-  }
+  const oncallMention = tagOncall ? await getOncallMentions(app) : "";
 
   const timeframe = days === 1 ? "today" : `the last ${days} days`;
   const message = `*unresponded threads*\n\n${oncallMention}the following ${unrespondedIssues.length} thread(s) from ${timeframe} have not been responded to:\n\n${issueList}`;

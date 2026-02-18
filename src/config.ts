@@ -16,13 +16,14 @@ export const config = {
     signingSecret: requireEnv("SLACK_SIGNING_SECRET"),
     appToken: requireEnv("SLACK_APP_TOKEN"),
   },
-  incidentIo: {
-    apiKey: requireEnv("INCIDENT_IO_API_KEY"),
-    scheduleIds: {
-      sdk: requireEnv("INCIDENT_IO_SDK_SCHEDULE_ID"),
-      docs: requireEnv("INCIDENT_IO_DOCS_SCHEDULE_ID"),
-    },
-  },
+  // incident.io commented out -- using Slack user groups instead
+  // incidentIo: {
+  //   apiKey: requireEnv("INCIDENT_IO_API_KEY"),
+  //   scheduleIds: {
+  //     sdk: requireEnv("INCIDENT_IO_SDK_SCHEDULE_ID"),
+  //     docs: requireEnv("INCIDENT_IO_DOCS_SCHEDULE_ID"),
+  //   },
+  // },
   pylon: {
     apiToken: requireEnv("PYLON_API_TOKEN"),
   },

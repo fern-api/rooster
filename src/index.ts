@@ -1,11 +1,7 @@
 import { App } from "@slack/bolt";
 import cron from "node-cron";
 import { config } from "./config";
-import {
-  getCheckMessage,
-  sendCheckMessage,
-  sendOpenThreadReminder,
-} from "./openThreadReminder";
+import { getCheckMessage, sendCheckMessage } from "./openThreadReminder";
 
 const app = new App({
   token: config.slack.botToken,
@@ -14,13 +10,23 @@ const app = new App({
   appToken: config.slack.appToken,
 });
 
-// schedule the open thread reminder for 5 PM on weekdays
-cron.schedule("0 17 * * 1-5", async () => {
-  console.log("running end-of-day open thread check...");
+// schedule the morning check for 9 AM on weekdays
+cron.schedule("0 9 * * 1-5", async () => {
+  console.log("running morning check (last 7 days, tagging on-call)...");
   try {
-    await sendOpenThreadReminder(app);
+    await sendCheckMessage(app, true, { showNew: true, showOpen: true, days: 7 });
   } catch (error) {
-    console.error("error sending open thread reminder:", error);
+    console.error("error sending morning check:", error);
+  }
+});
+
+// schedule the end-of-day check for 5 PM on weekdays
+cron.schedule("0 17 * * 1-5", async () => {
+  console.log("running end-of-day check (tagging on-call)...");
+  try {
+    await sendCheckMessage(app, true, { showNew: true, showOpen: true, days: 1 });
+  } catch (error) {
+    console.error("error sending end-of-day check:", error);
   }
 });
 
@@ -91,5 +97,6 @@ app.command("/rooster", async ({ ack, respond, command }) => {
 (async () => {
   await app.start();
   console.log("rooster is running!");
-  console.log("scheduled: open thread reminder at 5 PM on weekdays");
+  console.log("scheduled: morning check at 9 AM on weekdays");
+  console.log("scheduled: end-of-day check at 5 PM on weekdays");
 })();
