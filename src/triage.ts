@@ -1,7 +1,7 @@
 import { App } from "@slack/bolt";
 import { config } from "./config";
 
-const DEVIN_DOCS_RUNS_CHANNEL = "C09NULAN2H3";
+const DEVIN_DOCS_RUNS_CHANNEL = "C0AGFEL12AG";
 const CUSTOMER_SUPPORT_CHANNEL = "C052DFWVCG6";
 
 // Cache for the Devin bot user ID
