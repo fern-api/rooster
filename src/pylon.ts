@@ -195,6 +195,10 @@ async function fetchIssues(days: number = 1): Promise<PylonIssue[]> {
   }
 
   const data = (await response.json()) as PylonSearchResponse;
+  if (!data.data) {
+    console.error("unexpected pylon response:", JSON.stringify(data));
+    return [];
+  }
   return data.data;
 }
 
