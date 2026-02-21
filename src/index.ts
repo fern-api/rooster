@@ -32,7 +32,7 @@ cron.schedule("0 17 * * 1-5", async () => {
 });
 
 // single rooster command with subcommands
-app.command("/rooster", async ({ ack, respond, command }) => {
+app.command(config.slashCommand, async ({ ack, respond, command }) => {
   await ack();
   const args = command.text?.trim().split(/\s+/) || [];
   const subcommand = args[0]?.toLowerCase();

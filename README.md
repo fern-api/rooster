@@ -33,8 +33,9 @@ pnpm run dev
 
 - `@rooster triage` - triage a customer support thread
   - mention rooster with `triage` inside a #customer-support thread
-  - rooster opens a Devin thread in <#C0AGFEL12AG> to analyze the issue
-  - Devin determines which on-call to tag and drafts next steps (support reply or PR)
+  - rooster @mentions Devin in #devin-triage-runs with triage instructions and a link to the source thread
+  - Devin reads the thread context natively and responds with on-call assignment and next steps
+  - rooster replies in the original thread with a link to the triage run
 
 ## more functions coming soon...
 - triage can decide a thread is incident-worthy (integrate with incident.io, open an incident)

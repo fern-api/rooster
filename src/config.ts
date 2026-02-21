@@ -27,4 +27,9 @@ export const config = {
   pylon: {
     apiToken: requireEnv("PYLON_API_TOKEN"),
   },
+  devin: {
+    slackUserId: requireEnv("DEVIN_SLACK_USER_ID"),
+    triageChannel: requireEnv("DEVIN_TRIAGE_CHANNEL"),
+  },
+  slashCommand: process.env.SLASH_COMMAND || "/rooster",
 };
