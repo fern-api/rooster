@@ -2,6 +2,7 @@ import { App } from "@slack/bolt";
 import cron from "node-cron";
 import { config } from "./config";
 import { getCheckMessage, getCheckMineMessage, sendCheckMessage } from "./openThreadReminder";
+import { handleTriage } from "./triage";
 
 const app = new App({
   token: config.slack.botToken,
@@ -107,6 +108,18 @@ app.command("/rooster", async ({ ack, respond, command }) => {
       break;
     }
 
+    case "triage": {
+      try {
+        const triageArgs = args.slice(1); // everything after "triage"
+        const result = await handleTriage(app, triageArgs);
+        await respond(result.ok ? result.message : `❌ ${result.message}`);
+      } catch (error) {
+        console.error("error during triage:", error);
+        await respond("❌ error running triage. see logs for details.");
+      }
+      break;
+    }
+
     default:
       await respond(
         "available commands:\n" +
@@ -118,7 +131,8 @@ app.command("/rooster", async ({ ack, respond, command }) => {
           "  - by default, shows both new and open issues in separate sections\n" +
           "  - add `--channel` to post to channel\n" +
           "  - add `--remind` to tag on-call\n" +
-          "  - add `--mine` to show only issues assigned to you (new or waiting-on-you)"
+          "  - add `--mine` to show only issues assigned to you (new or waiting-on-you)\n" +
+          "• `/rooster triage <thread_url>` - triage a #customer-support thread via Devin"
       );
   }
 });
