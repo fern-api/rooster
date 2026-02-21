@@ -33,10 +33,12 @@ pnpm run dev
 
 - `@rooster triage` - triage a customer support thread
   - mention rooster with `triage` inside a #customer-support thread
-  - rooster opens a Devin thread in #devin-docs-runs to analyze the issue
+  - rooster opens a Devin thread in <#C0AGFEL12AG> to analyze the issue
   - Devin determines which on-call to tag and drafts next steps (support reply or PR)
 
 ## more functions coming soon...
+- triage can decide a thread is incident-worthy (integrate with incident.io, open an incident)
+- triage can check account subscription status (connect to supabase)
 - alert for stale PRs
 - alert for tagged, open issues
 - alert immediately for high-risk messages (e.g. "broken", "down", "inaccessible")
