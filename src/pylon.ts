@@ -219,6 +219,36 @@ export async function getOpenNonNewIssues(days: number = 1): Promise<PylonIssue[
 }
 
 /**
+ * fetches issues assigned to a specific email with state "new" or "waiting_on_you"
+ * from the last N days
+ */
+export async function getMyIssues(days: number, assigneeEmail: string): Promise<PylonIssue[]> {
+  const issues = await fetchIssues(days);
+  const relevantStates = ["new", ...OPEN_NON_NEW_STATES];
+
+  // filter by relevant states first
+  const stateFiltered = issues.filter((issue) => relevantStates.includes(issue.state));
+
+  // resolve assignee emails
+  const emailMap = new Map<string, string>();
+  await Promise.all(
+    Array.from(new Set(stateFiltered.map((i) => i.assignee?.id).filter(Boolean) as string[])).map(async (id) => {
+      const email = await fetchPylonUserEmail(id);
+      if (email) {
+        emailMap.set(id, email);
+      }
+    })
+  );
+
+  // filter by matching assignee email
+  return stateFiltered.filter((issue) => {
+    if (!issue.assignee?.id) return false;
+    const email = emailMap.get(issue.assignee.id);
+    return email?.toLowerCase() === assigneeEmail.toLowerCase();
+  });
+}
+
+/**
  * fetches issues from the last N days that have not been responded to at all
  * filters for state = "new" AND first_response_time = null
  * (issues with first_response_time set are customer replies to Fern-initiated threads)
