@@ -1,7 +1,7 @@
 import { App } from "@slack/bolt";
 import cron from "node-cron";
 import { config } from "./config";
-import { getCheckMessage, sendCheckMessage } from "./openThreadReminder";
+import { getCheckMessage, getCheckMineMessage, sendCheckMessage } from "./openThreadReminder";
 
 const app = new App({
   token: config.slack.botToken,
@@ -42,6 +42,37 @@ app.command("/rooster", async ({ ack, respond, command }) => {
       break;
 
     case "check": {
+      // handle "check mine [days]" subcommand
+      if (args[1]?.toLowerCase() === "mine") {
+        const daysArg = args.slice(2).find((arg) => /^\d+$/.test(arg));
+        const days = daysArg ? Math.max(1, parseInt(daysArg, 10)) : 1;
+        const timeframe = days === 1 ? "today" : `the last ${days} days`;
+
+        await respond(`checking your issues from ${timeframe}...`);
+        try {
+          const userInfo = await app.client.users.info({
+            token: config.slack.botToken,
+            user: command.user_id,
+          });
+          const userEmail = userInfo.user?.profile?.email;
+          if (!userEmail) {
+            await respond("❌ couldn't find your email in Slack. make sure your email is set in your Slack profile.");
+            break;
+          }
+
+          const message = await getCheckMineMessage(app, days, userEmail);
+          if (message) {
+            await respond(message);
+          } else {
+            await respond("✅ no issues assigned to you!");
+          }
+        } catch (error) {
+          console.error("error during check mine:", error);
+          await respond("❌ error running the check. see logs for details.");
+        }
+        break;
+      }
+
       const tagOncall = args.includes("--remind");
       const sendToChannel = tagOncall || args.includes("--channel");
       const filterNew = args.includes("--new");
@@ -89,7 +120,8 @@ app.command("/rooster", async ({ ack, respond, command }) => {
           "  - add `--open` to show only waiting-on-you issues\n" +
           "  - by default, shows both new and open issues in separate sections\n" +
           "  - add `--channel` to post to channel\n" +
-          "  - add `--remind` to tag on-call"
+          "  - add `--remind` to tag on-call\n" +
+          "• `/rooster check mine [days]` - check issues assigned to you (new or waiting-on-you)"
       );
   }
 });

@@ -1,6 +1,6 @@
 import { App } from "@slack/bolt";
 import { config } from "./config";
-import { getAccountNamesForIssues, getAssigneeEmailsForIssues, getNewIssues, getOpenNonNewIssues, getUnrespondedIssues, PylonIssue } from "./pylon";
+import { getAccountNamesForIssues, getAssigneeEmailsForIssues, getMyIssues, getNewIssues, getOpenNonNewIssues, getUnrespondedIssues, PylonIssue } from "./pylon";
 
 const CUSTOMER_ALERTS_CHANNEL = "customer-alerts";
 
@@ -242,6 +242,46 @@ export async function getUnrespondedThreadsMessage(app?: App, days: number = 1):
   const timeframe = days === 1 ? "today" : `the last ${days} days`;
 
   return `*unresponded threads*\n\nthe following ${unrespondedIssues.length} thread(s) from ${timeframe} have not been responded to:\n\n${issueList}`;
+}
+
+/**
+ * builds the message for issues assigned to a specific user
+ * filters for "new" and "waiting_on_you" states
+ * returns null if no issues found
+ */
+export async function getCheckMineMessage(app: App, days: number, assigneeEmail: string): Promise<string | null> {
+  const issues = await getMyIssues(days, assigneeEmail);
+
+  if (issues.length === 0) {
+    return null;
+  }
+
+  const newIssues = issues.filter((i) => i.state === "new");
+  const onYouIssues = issues.filter((i) => i.state === "waiting_on_you");
+
+  const [channelNames, accountNames] = await Promise.all([
+    getChannelNamesForIssues(app, issues),
+    getAccountNamesForIssues(issues),
+  ]);
+
+  const timeframe = days === 1 ? "today" : `the last ${days} days`;
+  const sections: string[] = [];
+
+  if (newIssues.length > 0) {
+    const list = newIssues.map((issue, index) => formatIssue(issue, index, { channelNames, accountNames })).join("\n");
+    sections.push(`*new (${newIssues.length})*\n${list}`);
+  }
+
+  if (onYouIssues.length > 0) {
+    const list = onYouIssues.map((issue, index) => formatIssue(issue, index, { channelNames, accountNames })).join("\n");
+    sections.push(`*waiting on you (${onYouIssues.length})*\n${list}`);
+  }
+
+  if (sections.length === 0) {
+    return null;
+  }
+
+  return `*your issues from ${timeframe}*\n\n${sections.join("\n\n")}`;
 }
 
 export interface CheckOptions {
