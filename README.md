@@ -31,9 +31,9 @@ pnpm run dev
   - add `--channel` to post results to #customer-alerts
   - add `--remind` to tag on-call engineers (implies --channel)
 
-- `/rooster triage <thread_url>` - triage a customer support thread
-  - paste a thread link from #customer-support
-  - opens a Devin thread in #devin-docs-runs to analyze the issue
+- `@rooster triage` - triage a customer support thread
+  - mention rooster with `triage` inside a #customer-support thread
+  - rooster opens a Devin thread in #devin-docs-runs to analyze the issue
   - Devin determines which on-call to tag and drafts next steps (support reply or PR)
 
 ## more functions coming soon...

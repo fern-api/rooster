@@ -2,7 +2,7 @@ import { App } from "@slack/bolt";
 import cron from "node-cron";
 import { config } from "./config";
 import { getCheckMessage, getCheckMineMessage, sendCheckMessage } from "./openThreadReminder";
-import { handleTriage } from "./triage";
+import { registerTriageListener } from "./triage";
 
 const app = new App({
   token: config.slack.botToken,
@@ -109,16 +109,13 @@ app.command("/rooster", async ({ ack, respond, command }) => {
     }
 
     case "triage": {
-      try {
-        const triageArgs = args.slice(1); // everything after "triage"
-        const result = await handleTriage(app, triageArgs);
-        await respond(result.ok ? result.message : `❌ ${result.message}`);
-      } catch (error) {
-        console.error("error during triage:", error);
-        await respond("❌ error running triage. see logs for details.");
-      }
+      await respond(
+        "triage runs via app mentions so we can read the thread context.\n" +
+          "In a #customer-support thread, mention: `@rooster triage`"
+      );
       break;
     }
+
 
     default:
       await respond(
@@ -132,14 +129,19 @@ app.command("/rooster", async ({ ack, respond, command }) => {
           "  - add `--channel` to post to channel\n" +
           "  - add `--remind` to tag on-call\n" +
           "  - add `--mine` to show only issues assigned to you (new or waiting-on-you)\n" +
-          "• `/rooster triage <thread_url>` - triage a #customer-support thread via Devin"
+          "\n" +
+          "triage: mention `@rooster triage` inside a #customer-support thread"
       );
   }
 });
+
+// register the triage app_mention listener
+registerTriageListener(app);
 
 (async () => {
   await app.start();
   console.log("rooster is running!");
   console.log("scheduled: morning check at 9 AM on weekdays");
   console.log("scheduled: end-of-day check at 5 PM on weekdays");
+  console.log("listening: @rooster triage mentions in #customer-support");
 })();

@@ -107,7 +107,8 @@ async function resolveUserName(
  */
 async function buildTriagePrompt(
   app: App,
-  messages: ThreadMessage[]
+  messages: ThreadMessage[],
+  sourceThreadUrl: string
 ): Promise<string> {
   // resolve user names for all messages
   const userIds = new Set<string>();
@@ -137,7 +138,9 @@ async function buildTriagePrompt(
     })
     .join("\n");
 
-  const prompt = `You are triaging a customer support thread from #customer-support.
+  return `You are triaging a customer support thread from #customer-support.
+
+Source thread: ${sourceThreadUrl}
 
 Here is the full thread:
 
@@ -148,8 +151,14 @@ Please:
 2. Based on the issue, decide on next steps:
    a. If this can be resolved with a support response, draft a message for the on-call to send to the customer.
    b. If this requires a code change, identify the relevant repo and draft a PR to fix the issue.`;
+}
 
-  return prompt;
+/**
+ * builds a slack thread URL from channel ID and thread timestamp
+ */
+function buildThreadUrl(channelId: string, threadTs: string): string {
+  const tsForUrl = threadTs.replace(".", "");
+  return `https://buildwithfern.slack.com/archives/${channelId}/p${tsForUrl}`;
 }
 
 /**
@@ -157,8 +166,7 @@ Please:
  */
 async function openDevinThread(
   app: App,
-  prompt: string,
-  sourceThreadUrl: string
+  prompt: string
 ): Promise<{ ok: boolean; error?: string }> {
   const devinUserId = await getDevinBotUserId(app);
 
@@ -166,7 +174,7 @@ async function openDevinThread(
     return { ok: false, error: "could not find the Devin bot user in this workspace" };
   }
 
-  const message = `<@${devinUserId}> ${prompt}\n\n_source thread: ${sourceThreadUrl}_`;
+  const message = `<@${devinUserId}> ${prompt}`;
 
   try {
     await app.client.chat.postMessage({
@@ -183,95 +191,87 @@ async function openDevinThread(
 }
 
 /**
- * parses a slack thread URL to extract channel ID and thread timestamp
- * supports formats like:
- *   https://buildwithfern.slack.com/archives/C052DFWVCG6/p1234567890123456
- *   https://app.slack.com/client/T.../C052DFWVCG6/thread/C052DFWVCG6-1234567890.123456
+ * replies in the original thread with a status message
  */
-function parseThreadUrl(url: string): { channelId: string; threadTs: string } | null {
-  // format: /archives/{channelId}/p{ts_without_dot}
-  const archiveMatch = url.match(/\/archives\/([A-Z0-9]+)\/p(\d{10})(\d{6})/);
-  if (archiveMatch) {
-    const channelId = archiveMatch[1];
-    const threadTs = `${archiveMatch[2]}.${archiveMatch[3]}`;
-    return { channelId, threadTs };
+async function replyInThread(
+  app: App,
+  channelId: string,
+  threadTs: string,
+  text: string
+): Promise<void> {
+  try {
+    await app.client.chat.postMessage({
+      token: config.slack.botToken,
+      channel: channelId,
+      thread_ts: threadTs,
+      text,
+      unfurl_links: false,
+    });
+  } catch (error) {
+    console.error("error replying in thread:", error);
   }
-
-  // format: /thread/{channelId}-{ts_with_dot}
-  const threadMatch = url.match(/\/thread\/([A-Z0-9]+)-(\d+\.\d+)/);
-  if (threadMatch) {
-    return { channelId: threadMatch[1], threadTs: threadMatch[2] };
-  }
-
-  return null;
 }
 
 /**
- * handles the /rooster triage command
- * accepts a slack thread URL from #customer-support as an argument
- * usage: /rooster triage <thread_url>
+ * registers the triage app_mention listener
+ * triggered by mentioning @rooster with "triage" in a #customer-support thread
  */
-export async function handleTriage(
-  app: App,
-  args: string[]
-): Promise<{ ok: boolean; message: string }> {
-  // find the thread URL in the args (slack may auto-format URLs with angle brackets)
-  const rawUrl = args.find((arg) => arg.includes("slack.com/"));
-  if (!rawUrl) {
-    return {
-      ok: false,
-      message:
-        "usage: `/rooster triage <thread_url>`\n" +
-        "copy the thread link from #customer-support and paste it as the argument.",
-    };
-  }
+export function registerTriageListener(app: App): void {
+  app.event("app_mention", async ({ event, say }) => {
+    // only respond to mentions that include "triage"
+    const text = event.text?.toLowerCase() || "";
+    if (!text.includes("triage")) {
+      return;
+    }
 
-  // strip slack URL formatting: <url|label> or <url>
-  const url = rawUrl.replace(/^</, "").replace(/(\|.*)?>/g, "");
+    const channelId = event.channel;
+    const threadTs = event.thread_ts || event.ts;
 
-  // parse the thread URL
-  const parsed = parseThreadUrl(url);
-  if (!parsed) {
-    return {
-      ok: false,
-      message: "couldn't parse that thread URL. make sure it's a link to a thread in #customer-support.",
-    };
-  }
+    // must be in #customer-support
+    if (channelId !== CUSTOMER_SUPPORT_CHANNEL) {
+      await say({
+        text: "triage only works in <#" + CUSTOMER_SUPPORT_CHANNEL + "> threads.",
+        thread_ts: threadTs,
+      });
+      return;
+    }
 
-  const { channelId, threadTs } = parsed;
+    // must be in a thread (thread_ts present means this mention is inside a thread)
+    if (!event.thread_ts) {
+      await say({
+        text: "please mention me with `triage` inside a support thread, not at the top level.",
+        thread_ts: event.ts,
+      });
+      return;
+    }
 
-  // must be from #customer-support
-  if (channelId !== CUSTOMER_SUPPORT_CHANNEL) {
-    return {
-      ok: false,
-      message: "that thread isn't in <#" + CUSTOMER_SUPPORT_CHANNEL + ">. `/rooster triage` only works with #customer-support threads.",
-    };
-  }
+    // acknowledge
+    await replyInThread(app, channelId, threadTs, "triaging this thread...");
 
-  // fetch thread messages
-  const messages = await fetchThreadMessages(app, channelId, threadTs);
-  if (messages.length === 0) {
-    return {
-      ok: false,
-      message: "couldn't fetch any messages from that thread. check that the link is correct.",
-    };
-  }
+    // fetch thread messages
+    const messages = await fetchThreadMessages(app, channelId, threadTs);
+    if (messages.length === 0) {
+      await replyInThread(app, channelId, threadTs, "couldn't fetch any messages from this thread.");
+      return;
+    }
 
-  // build prompt
-  const prompt = await buildTriagePrompt(app, messages);
+    // build source thread URL and prompt
+    const sourceThreadUrl = buildThreadUrl(channelId, threadTs);
+    const prompt = await buildTriagePrompt(app, messages, sourceThreadUrl);
 
-  // open Devin thread
-  const result = await openDevinThread(app, prompt, url);
+    // open Devin thread in #devin-docs-runs
+    const result = await openDevinThread(app, prompt);
 
-  if (!result.ok) {
-    return {
-      ok: false,
-      message: `triage failed: ${result.error}`,
-    };
-  }
+    if (!result.ok) {
+      await replyInThread(app, channelId, threadTs, `triage failed: ${result.error}`);
+      return;
+    }
 
-  return {
-    ok: true,
-    message: `triage started — Devin is analyzing the thread in <#${DEVIN_DOCS_RUNS_CHANNEL}>`,
-  };
+    await replyInThread(
+      app,
+      channelId,
+      threadTs,
+      `triage started — Devin is analyzing this thread in <#${DEVIN_DOCS_RUNS_CHANNEL}>`
+    );
+  });
 }
