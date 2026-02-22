@@ -109,11 +109,16 @@ export function createWebhookHandler(app: App): (req: Request, res: Response) =>
     // process asynchronously
     try {
       const payload = req.body as Record<string, unknown>;
+      console.log("[triage] extracting issue data from payload, top-level keys:", Object.keys(payload));
       const issue = extractIssueData(payload);
+      console.log("[triage] extracted issue fields:", Object.keys(issue));
       const triageContext = buildTriageContext(issue);
+      console.log(`[triage] built triage context (${triageContext.length} chars)`);
 
       // resolve on-call mentions so Devin knows the exact Slack handles
+      console.log("[triage] resolving on-call mentions");
       const oncallMentions = await getOncallMentions(app);
+      console.log(`[triage] on-call mentions: ${oncallMentions.trim()}`);
 
       const triageMessage =
         `<@${config.devin.slackUserId}> ${TRIAGE_PROMPT}\n\n` +
@@ -121,6 +126,7 @@ export function createWebhookHandler(app: App): (req: Request, res: Response) =>
         triageContext;
 
       // post triage request in #devin-triage-runs
+      console.log(`[triage] posting triage message to channel=${config.devin.triageChannel} (${triageMessage.length} chars)`);
       const triageMsg = await app.client.chat.postMessage({
         token: config.slack.botToken,
         channel: config.devin.triageChannel,
@@ -128,7 +134,7 @@ export function createWebhookHandler(app: App): (req: Request, res: Response) =>
         unfurl_links: false,
       });
 
-      console.log("[triage] posted to devin triage channel");
+      console.log(`[triage] posted to devin triage channel, ts=${triageMsg.ts}`);
 
       // try to post a notification in the original Slack thread if we have channel/thread info
       const slack = (issue.slack as Record<string, unknown>) ?? {};
@@ -136,6 +142,7 @@ export function createWebhookHandler(app: App): (req: Request, res: Response) =>
       const threadTs = (slack.thread_ts as string) || (slack.message_ts as string);
 
       if (channelId && threadTs) {
+        console.log(`[triage] posting notification in original thread: channel=${channelId} thread_ts=${threadTs}`);
         const triageThreadUrl = triageMsg.ts
           ? buildThreadUrl(config.devin.triageChannel, triageMsg.ts)
           : null;
@@ -151,6 +158,8 @@ export function createWebhookHandler(app: App): (req: Request, res: Response) =>
         });
 
         console.log("[triage] posted notification in original thread");
+      } else {
+        console.log(`[triage] no slack thread info found on issue, skipping thread notification (channel_id=${channelId}, thread_ts=${threadTs})`);
       }
     } catch (error) {
       console.error("[triage] error processing webhook:", error);

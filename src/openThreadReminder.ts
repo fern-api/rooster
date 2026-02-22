@@ -48,6 +48,7 @@ async function getCustomerAlertsChannelId(app: App): Promise<string> {
 export async function getOncallMentions(app: App): Promise<string> {
   // fetch all user groups once if cache is empty
   if (userGroupIdCache.size === 0) {
+    console.log("[oncall] fetching user groups from Slack");
     try {
       const result = await app.client.usergroups.list({
         token: config.slack.botToken,
@@ -58,14 +59,18 @@ export async function getOncallMentions(app: App): Promise<string> {
           userGroupIdCache.set(group.handle, group.id);
         }
       }
+      console.log(`[oncall] cached ${userGroupIdCache.size} user groups`);
     } catch (error) {
-      console.error("error fetching user groups:", error);
+      console.error("[oncall] error fetching user groups:", error);
     }
   }
 
   const mentions = ONCALL_HANDLES
     .map((handle) => {
       const groupId = userGroupIdCache.get(handle);
+      if (!groupId) {
+        console.log(`[oncall] warning: no group ID found for handle "${handle}", using plain text fallback`);
+      }
       return groupId ? `<!subteam^${groupId}>` : `@${handle}`;
     })
     .join(" ");
@@ -250,7 +255,9 @@ export async function getUnrespondedThreadsMessage(app?: App, days: number = 1):
  * returns null if no issues found
  */
 export async function getCheckMineMessage(app: App, days: number, assigneeEmail: string): Promise<string | null> {
+  console.log(`[check] getCheckMineMessage: days=${days} assigneeEmail=${assigneeEmail}`);
   const issues = await getMyIssues(days, assigneeEmail);
+  console.log(`[check] getCheckMineMessage: found ${issues.length} issues for ${assigneeEmail}`);
 
   if (issues.length === 0) {
     return null;
@@ -295,6 +302,7 @@ export interface CheckOptions {
  * returns null if no issues found matching the criteria
  */
 export async function getCheckMessage(app?: App, options: CheckOptions = {}): Promise<string | null> {
+  console.log(`[check] getCheckMessage: options=${JSON.stringify(options)}`);
   const { showNew = true, showOpen = true, days = 1 } = options;
   const timeframe = days === 1 ? "today" : `the last ${days} days`;
 
@@ -302,6 +310,8 @@ export async function getCheckMessage(app?: App, options: CheckOptions = {}): Pr
     showNew ? getNewIssues(days) : Promise.resolve([]),
     showOpen ? getOpenNonNewIssues(days) : Promise.resolve([]),
   ]);
+
+  console.log(`[check] getCheckMessage: found ${newIssues.length} new + ${openIssues.length} open issues`);
 
   if (newIssues.length === 0 && openIssues.length === 0) {
     return null;
@@ -339,7 +349,9 @@ export async function getCheckMessage(app?: App, options: CheckOptions = {}): Pr
  * returns true if message was sent, false if no issues found
  */
 export async function sendCheckMessage(app: App, tagOncall: boolean = false, options: CheckOptions = {}): Promise<boolean> {
+  console.log(`[check] sendCheckMessage: tagOncall=${tagOncall} options=${JSON.stringify(options)}`);
   const customerAlertsChannelId = await getCustomerAlertsChannelId(app);
+  console.log(`[check] resolved #customer-alerts channel id: ${customerAlertsChannelId}`);
   const { showNew = true, showOpen = true, days = 1 } = options;
   const timeframe = days === 1 ? "today" : `the last ${days} days`;
 
@@ -377,6 +389,7 @@ export async function sendCheckMessage(app: App, tagOncall: boolean = false, opt
   const header = `*issues from ${timeframe}*\n\n`;
   const message = `${oncallMention}${header}${sections.join("\n\n")}`;
 
+  console.log(`[check] posting message to #customer-alerts (${message.length} chars)`);
   await app.client.chat.postMessage({
     token: config.slack.botToken,
     channel: customerAlertsChannelId,
@@ -385,7 +398,7 @@ export async function sendCheckMessage(app: App, tagOncall: boolean = false, opt
   });
 
   const totalCount = newIssues.length + openIssues.length;
-  console.log(`sent check message for ${totalCount} issue(s).`);
+  console.log(`[check] sent check message: ${newIssues.length} new + ${openIssues.length} open = ${totalCount} issue(s)`);
   return true;
 }
 
@@ -394,11 +407,12 @@ export async function sendCheckMessage(app: App, tagOncall: boolean = false, opt
  * returns true if message was sent, false if no unresponded threads
  */
 export async function sendUnrespondedThreadsReminder(app: App, tagOncall: boolean = false, days: number = 1): Promise<boolean> {
+  console.log(`[reminder] sendUnrespondedThreadsReminder: tagOncall=${tagOncall} days=${days}`);
   const customerAlertsChannelId = await getCustomerAlertsChannelId(app);
   const unrespondedIssues = await getUnrespondedIssues(days);
 
   if (unrespondedIssues.length === 0) {
-    console.log("no unresponded threads found. skipping message.");
+    console.log("[reminder] no unresponded threads found. skipping message.");
     return false;
   }
 
@@ -421,6 +435,6 @@ export async function sendUnrespondedThreadsReminder(app: App, tagOncall: boolea
     unfurl_links: false,
   });
 
-  console.log(`sent unresponded threads message for ${unrespondedIssues.length} issue(s).`);
+  console.log(`[reminder] sent unresponded threads message for ${unrespondedIssues.length} issue(s)`);
   return true;
 }

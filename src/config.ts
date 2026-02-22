@@ -37,3 +37,10 @@ export const config = {
   },
   slashCommand: process.env.SLASH_COMMAND || "/rooster",
 };
+
+console.log("[config] loaded configuration:", {
+  slashCommand: config.slashCommand,
+  webhookPort: config.webhook.port,
+  triageChannel: config.devin.triageChannel,
+  devinUserId: config.devin.slackUserId,
+});

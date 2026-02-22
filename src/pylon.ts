@@ -58,9 +58,11 @@ interface PylonAccount {
  */
 async function fetchAccount(accountId: string): Promise<PylonAccount | null> {
   if (accountNameCache.has(accountId)) {
+    console.log(`[pylon] cache hit for account ${accountId}: ${accountNameCache.get(accountId)}`);
     return { id: accountId, name: accountNameCache.get(accountId)! };
   }
 
+  console.log(`[pylon] fetching account ${accountId}`);
   try {
     const response = await fetch(`${PYLON_API_BASE}/accounts/${accountId}`, {
       method: "GET",
@@ -116,9 +118,11 @@ export async function getAccountNamesForIssues(issues: PylonIssue[]): Promise<Ma
  */
 async function fetchPylonUserEmail(userId: string): Promise<string | null> {
   if (pylonUserEmailCache.has(userId)) {
+    console.log(`[pylon] cache hit for user email ${userId}: ${pylonUserEmailCache.get(userId)}`);
     return pylonUserEmailCache.get(userId)!;
   }
 
+  console.log(`[pylon] fetching user email for ${userId}`);
   try {
     const response = await fetch(`${PYLON_API_BASE}/users/${userId}`, {
       method: "GET",
@@ -182,6 +186,9 @@ async function fetchIssues(days: number = 1): Promise<PylonIssue[]> {
   url.searchParams.set("start_time", startTime.toISOString());
   url.searchParams.set("end_time", endOfDay.toISOString());
 
+  console.log(`[pylon] fetching issues: days=${days} start=${startTime.toISOString()} end=${endOfDay.toISOString()}`);
+  const fetchStart = Date.now();
+
   const response = await fetch(url.toString(), {
     method: "GET",
     headers: {
@@ -190,17 +197,26 @@ async function fetchIssues(days: number = 1): Promise<PylonIssue[]> {
     },
   });
 
+  const elapsed = Date.now() - fetchStart;
+
   if (!response.ok) {
     const errorBody = await response.text();
-    console.error("pylon api error response:", errorBody);
+    console.error(`[pylon] api error (${elapsed}ms): ${response.status} ${response.statusText}`, errorBody);
     throw new Error(`pylon api error: ${response.status} ${response.statusText} - ${errorBody}`);
   }
 
   const data = (await response.json()) as PylonSearchResponse;
   if (!data.data) {
-    console.error("unexpected pylon response:", JSON.stringify(data));
+    console.error(`[pylon] unexpected response (${elapsed}ms):`, JSON.stringify(data));
     return [];
   }
+
+  const stateCounts = data.data.reduce((acc, issue) => {
+    acc[issue.state] = (acc[issue.state] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  console.log(`[pylon] fetched ${data.data.length} issues in ${elapsed}ms, states: ${JSON.stringify(stateCounts)}`);
+
   return data.data;
 }
 
@@ -225,11 +241,13 @@ export async function getOpenNonNewIssues(days: number = 1): Promise<PylonIssue[
  * from the last N days
  */
 export async function getMyIssues(days: number, assigneeEmail: string): Promise<PylonIssue[]> {
+  console.log(`[pylon] getMyIssues: days=${days} assigneeEmail=${assigneeEmail}`);
   const issues = await fetchIssues(days);
   const relevantStates = ["new", ...OPEN_NON_NEW_STATES];
 
   // filter by relevant states first
   const stateFiltered = issues.filter((issue) => relevantStates.includes(issue.state));
+  console.log(`[pylon] getMyIssues: ${stateFiltered.length}/${issues.length} issues in relevant states`);
 
   // resolve assignee emails
   const emailMap = new Map<string, string>();
@@ -243,11 +261,13 @@ export async function getMyIssues(days: number, assigneeEmail: string): Promise<
   );
 
   // filter by matching assignee email
-  return stateFiltered.filter((issue) => {
+  const myIssues = stateFiltered.filter((issue) => {
     if (!issue.assignee?.id) return false;
     const email = emailMap.get(issue.assignee.id);
     return email?.toLowerCase() === assigneeEmail.toLowerCase();
   });
+  console.log(`[pylon] getMyIssues: found ${myIssues.length} issues assigned to ${assigneeEmail}`);
+  return myIssues;
 }
 
 /**

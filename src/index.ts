@@ -37,6 +37,7 @@ app.command(config.slashCommand, async ({ ack, respond, command }) => {
   await ack();
   const args = command.text?.trim().split(/\s+/) || [];
   const subcommand = args[0]?.toLowerCase();
+  console.log(`[command] ${config.slashCommand} invoked by user=${command.user_id} in channel=${command.channel_id} text="${command.text}"`);
 
   switch (subcommand) {
     case "status":
@@ -59,15 +60,18 @@ app.command(config.slashCommand, async ({ ack, respond, command }) => {
       if (filterMine) {
         await respond(`checking your issues from ${timeframe}...`);
         try {
+          console.log(`[command] check --mine: looking up email for user=${command.user_id}`);
           const userInfo = await app.client.users.info({
             token: config.slack.botToken,
             user: command.user_id,
           });
           const userEmail = userInfo.user?.profile?.email;
           if (!userEmail) {
+            console.log(`[command] check --mine: no email found for user=${command.user_id}`);
             await respond("❌ couldn't find your email in Slack. make sure your email is set in your Slack profile.");
             break;
           }
+          console.log(`[command] check --mine: resolved email=${userEmail}, fetching issues for days=${days}`);
 
           const message = await getCheckMineMessage(app, days, userEmail);
           if (message) {
@@ -86,6 +90,7 @@ app.command(config.slashCommand, async ({ ack, respond, command }) => {
       const showNew = filterNew || (!filterNew && !filterOpen);
       const showOpen = filterOpen || (!filterNew && !filterOpen);
 
+      console.log(`[command] check: days=${days} showNew=${showNew} showOpen=${showOpen} sendToChannel=${sendToChannel} tagOncall=${tagOncall}`);
       await respond(`checking issues from ${timeframe}...`);
       try {
         const options = { showNew, showOpen, days };
