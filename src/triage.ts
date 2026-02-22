@@ -70,6 +70,16 @@ function buildTriageContext(issue: Record<string, unknown>): string {
   if (issue.state) parts.push(`State: ${issue.state}`);
   if (issue.link) parts.push(`Pylon link: ${issue.link}`);
 
+  // slack thread link so triagers can jump to the original conversation
+  const slack = issue.slack as Record<string, unknown> | undefined;
+  if (slack) {
+    const channelId = slack.channel_id as string | undefined;
+    const ts = (slack.thread_ts as string) || (slack.message_ts as string);
+    if (channelId && ts) {
+      parts.push(`Slack thread: ${buildThreadUrl(channelId, ts)}`);
+    }
+  }
+
   // attachment urls
   const attachments = issue.attachment_urls as string[] | undefined;
   if (attachments?.length) parts.push(`Attachments:\n${attachments.join("\n")}`);
