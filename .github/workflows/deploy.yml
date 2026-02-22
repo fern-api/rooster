@@ -26,6 +26,7 @@ jobs:
               --name rooster \
               --restart unless-stopped \
               --env-file .env \
+              -p 3000:3000 \
               --log-driver=awslogs \
               --log-opt awslogs-region=us-east-1 \
               --log-opt awslogs-group=/ec2/rooster \
