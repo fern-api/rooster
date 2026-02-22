@@ -1,7 +1,9 @@
+import express from "express";
 import { App } from "@slack/bolt";
 import cron from "node-cron";
 import { config } from "./config";
 import { getCheckMessage, getCheckMineMessage, sendCheckMessage } from "./openThreadReminder";
+import { createWebhookHandler } from "./triage";
 
 const app = new App({
   token: config.slack.botToken,
@@ -31,7 +33,7 @@ cron.schedule("0 17 * * 1-5", async () => {
 });
 
 // single rooster command with subcommands
-app.command("/rooster", async ({ ack, respond, command }) => {
+app.command(config.slashCommand, async ({ ack, respond, command }) => {
   await ack();
   const args = command.text?.trim().split(/\s+/) || [];
   const subcommand = args[0]?.toLowerCase();
@@ -118,14 +120,34 @@ app.command("/rooster", async ({ ack, respond, command }) => {
           "  - by default, shows both new and open issues in separate sections\n" +
           "  - add `--channel` to post to channel\n" +
           "  - add `--remind` to tag on-call\n" +
-          "  - add `--mine` to show only issues assigned to you (new or waiting-on-you)"
+          "  - add `--mine` to show only issues assigned to you (new or waiting-on-you)\n" +
+          "\n" +
+          "triage runs automatically via Pylon webhooks when new issues are created"
       );
   }
 });
+
+// express server for Pylon webhooks
+const server = express();
+
+// parse JSON with raw body preserved for signature verification
+server.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as express.Request & { rawBody?: string }).rawBody = buf.toString();
+    },
+  })
+);
+
+server.post("/pylon/webhook", createWebhookHandler(app));
 
 (async () => {
   await app.start();
   console.log("rooster is running!");
   console.log("scheduled: morning check at 9 AM on weekdays");
   console.log("scheduled: end-of-day check at 5 PM on weekdays");
+
+  server.listen(config.webhook.port, () => {
+    console.log(`webhook server listening on port ${config.webhook.port}`);
+  });
 })();
