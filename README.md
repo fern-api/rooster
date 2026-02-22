@@ -31,11 +31,12 @@ pnpm run dev
   - add `--channel` to post results to #customer-alerts
   - add `--remind` to tag on-call engineers (implies --channel)
 
-- `@rooster triage` - triage a customer support thread
-  - mention rooster with `triage` inside a #customer-support thread
-  - rooster @mentions Devin in #devin-triage-runs with triage instructions and a link to the source thread
-  - Devin reads the thread context natively and responds with on-call assignment and next steps
-  - rooster replies in the original thread with a link to the triage run
+- **automatic triage via Pylon webhooks**
+  - when a new issue is created in Pylon, a webhook fires to rooster's `/pylon/webhook` endpoint
+  - rooster posts the issue context to #devin-triage-runs, @mentioning Devin with triage instructions and on-call handles
+  - Devin triages and tags the appropriate on-call team
+  - if Slack thread info is available in the payload, rooster also replies in the original thread with a link to the triage run
+  - requires `PYLON_WEBHOOK_SECRET` env var for HMAC signature verification
 
 ## more functions coming soon...
 - triage can decide a thread is incident-worthy (integrate with incident.io, open an incident)

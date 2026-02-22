@@ -45,7 +45,7 @@ async function getCustomerAlertsChannelId(app: App): Promise<string> {
 /**
  * looks up Slack user group IDs by handle and returns mention strings
  */
-async function getOncallMentions(app: App): Promise<string> {
+export async function getOncallMentions(app: App): Promise<string> {
   // fetch all user groups once if cache is empty
   if (userGroupIdCache.size === 0) {
     try {

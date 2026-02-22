@@ -22,6 +22,8 @@ export interface PylonIssue {
     email: string;
     id: string;
   };
+  body_html?: string;
+  attachment_urls?: string[];
   slack?: {
     channel_id: string;
     message_ts: string;
