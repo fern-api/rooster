@@ -7,6 +7,36 @@ if a support thread in `#customer-alerts` has not been marked with ✅ by the en
 
 ## setup
 
+### environment variables
+
+rooster requires the following environment variables (see `.env.example`):
+
+| variable | required | description |
+|---|---|---|
+| `SLACK_BOT_TOKEN` | yes | slack bot token (`xoxb-...`) |
+| `SLACK_SIGNING_SECRET` | yes | slack signing secret |
+| `SLACK_APP_TOKEN` | yes | slack app-level token (`xapp-...`) |
+| `PYLON_API_TOKEN` | yes | pylon api token |
+| `DEVIN_SLACK_USER_ID` | yes | devin's slack user id |
+| `DEVIN_TRIAGE_CHANNEL` | yes | channel id for `#devin-triage-runs` |
+| `PYLON_WEBHOOK_SECRET` | yes | pylon webhook HMAC secret |
+| `WEBHOOK_PORT` | no | webhook server port (default: `3000`) |
+| `SLASH_COMMAND` | no | slash command name (default: `/rooster`) |
+
+### adding a new environment variable
+
+1. add it to `.env.example` with a placeholder value
+2. add it to `src/config.ts` (use `requireEnv` if required)
+3. add it as a **repository secret** in GitHub: `Settings > Secrets and variables > Actions > New repository secret`
+4. add it to the `.env` file on the EC2 instance:
+   ```bash
+   ssh -i /path/to/your-key.pem <EC2_USER>@<EC2_HOST>
+   cd ~/rooster
+   nano .env
+   # add the new variable, save, then restart:
+   docker restart rooster
+   ```
+
 ### run the app
 
 ```bash
