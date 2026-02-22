@@ -8,8 +8,12 @@ const TRIAGE_PROMPT = `Please triage this customer support issue.
 
 1. Determine which on-call team should handle this and tag them in your response (exact Slack handles provided below).
 2. Based on the issue, decide on next steps:
-   a. If this can be resolved with a support response, draft a message for the on-call to send to the customer.
-   b. If this requires a code change, identify the relevant repo and draft a PR to fix the issue.`;
+  a. If this can be resolved with a support response, draft a message for the on-call to send to the customer.
+  b. If this requires a code change, identify the relevant repo and draft a PR to fix the issue.
+   
+For usage or custom configuration issues, or if you're not sure who to tag, tag @sales-eng-on-call. For product issues, tag the on-call engineer for that product. AI and Dashboard counts as Docs.
+   
+Bias towards suggesting an existing configuration or recommending a custom solution they can implement themselves before escalating to product changes.`;
 
 /**
  * builds a slack thread URL from channel ID and message timestamp
