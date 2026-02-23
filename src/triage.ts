@@ -3,16 +3,19 @@ import { App } from "@slack/bolt";
 import { config } from "./config";
 import { getOncallMentions } from "./openThreadReminder";
 
-const TRIAGE_PROMPT = `Please triage this customer support issue.
+const TRIAGE_PROMPT = `Triage this customer support issue. Use the exact Slack handles listed below.
 
-1. Determine which on-call team should handle this and tag them in your response (exact Slack handles provided below).
-2. Based on the issue, decide on next steps:
-  a. If this can be resolved with a support response, draft a message for the on-call to send to the customer.
-  b. If this requires a code change, identify the relevant repo and draft a PR to fix the issue.
-   
-For usage or custom configuration issues, or if you're not sure who to tag, tag @sales-eng-on-call. For product issues, tag the on-call engineer for that product. AI and Dashboard counts as Docs.
-   
-Bias towards suggesting an existing configuration or recommending a custom solution they can implement themselves before escalating to product changes.`;
+## Routing
+- Usage, configuration, or unclear issues → tag @sales-eng-on-call
+- Product bugs or feature gaps → tag the product on-call (AI and Dashboard = Docs team)
+
+## Response
+1. Tag the appropriate on-call team.
+2. Summarize the issue in 1-2 sentences.
+3. Recommend ONE of these actions:
+   a. **Support response** — if resolvable via existing config or docs, draft a reply for the on-call to send the customer. Prefer this over escalating to product changes.
+   b. **Code change needed** — if it's a bug or missing functionality, identify the relevant repo and describe the fix needed.
+4. If the issue is time-sensitive or blocking the customer, flag it as urgent.`;
 
 /**
  * builds a slack thread URL from channel ID and message timestamp
