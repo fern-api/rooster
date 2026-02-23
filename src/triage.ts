@@ -5,17 +5,17 @@ import { fetchIssueById } from "./pylon";
 
 const TRIAGE_PROMPT = `Triage this customer support issue.
 
-## Routing
-- Usage, configuration, or unclear issues → @sales-eng-on-call
-- SDK issue → @sdk-on-call
-- Docs, Dashboard, AI issue → @docs-on-call
+*Routing*
+• Usage, configuration, or unclear issues → @sales-eng-on-call
+• SDK issue → @sdk-on-call
+• Docs, Dashboard, AI issue → @docs-on-call
 
-## Response
-1. Tag which on-call team should handle this (use Routing).
+*Response*
+1. Tag which on-call team should handle this. You MUST actually tag/mention the group in Slack (e.g. @sales-eng-on-call) so they get notified.
 2. Summarize the issue in 1-2 sentences.
 3. Recommend ONE of these actions:
-   a. **Support response** — if resolvable via existing config or docs, draft a reply for the on-call to send the customer. Prefer this over escalating to product changes.
-   b. **Code change needed** — if it's a bug or missing functionality, identify the relevant repo and describe the fix needed.
+    a. *Support response* — if resolvable via existing config or docs, draft a reply for the on-call to send the customer. Prefer this over escalating to product changes.
+    b. *Code change needed* — if it's a bug or missing functionality, identify the relevant repo and describe the fix needed.
 4. If the issue is time-sensitive or blocking the customer, flag it as urgent.`;
 
 /**
@@ -102,7 +102,7 @@ function buildTriageContext(issue: Record<string, unknown>): string {
   const attachments = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
   if (attachments.length) parts.push(`Attachments:\n${attachments.join("\n")}`);
 
-  return parts.length > 0 ? `\n\nIssue context:\n${parts.join("\n")}` : "";
+  return parts.length > 0 ? `\n\n*Issue context*\n${parts.join("\n")}` : "";
 }
 
 /**
@@ -152,8 +152,7 @@ export function createWebhookHandler(app: App): (req: Request, res: Response) =>
       console.log(`[triage] built triage context (${triageContext.length} chars)`);
 
       const triageMessage =
-        `<@${config.devin.slackUserId}> ${TRIAGE_PROMPT}` +
-        triageContext;
+        `<@${config.devin.slackUserId}>${triageContext}\n\n${TRIAGE_PROMPT}`;
 
       // post triage request in #devin-triage-runs
       console.log(`[triage] posting triage message to channel=${config.devin.triageChannel} (${triageMessage.length} chars)`);
