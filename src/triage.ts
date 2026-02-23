@@ -3,20 +3,7 @@ import { App } from "@slack/bolt";
 import { config } from "./config";
 import { fetchIssueById } from "./pylon";
 
-const TRIAGE_PROMPT = `Triage this customer support issue.
-
-*Routing*
-• Usage, configuration, or unclear issues → sales-eng-on-call (group ID: S0AFERD1Y05)
-• SDK issue → sdk-on-call (group ID: S0A4KLQ70S1)
-• Docs, Dashboard, AI issue → docs-on-call (group ID: S0A5HJQC2HE)
-
-*Response*
-1. Tag which on-call team should handle this. To mention a group in Slack, use the format <!subteam^GROUP_ID> with the group ID above. Do NOT include this mention in your first/initial message — only mention the group in a follow-up reply to your own triage message.
-2. Summarize the issue in 1-2 sentences.
-3. Recommend ONE of these actions:
-    a. *Support response* — if resolvable via existing config or docs, draft a reply for the on-call to send the customer. Prefer this over escalating to product changes.
-    b. *Code change needed* — if it's a bug or missing functionality, identify the relevant repo and describe the fix needed.
-4. If the issue is time-sensitive or blocking the customer, flag it as urgent.`;
+const TRIAGE_PROMPT = `Triage this customer support issue. See the thread for routing and response guidelines.`;
 
 /**
  * builds a slack thread URL from channel ID and message timestamp
@@ -164,6 +151,32 @@ export function createWebhookHandler(app: App): (req: Request, res: Response) =>
       });
 
       console.log(`[triage] posted to devin triage channel, ts=${triageMsg.ts}`);
+
+      // post routing & response context as a threaded reply to keep the top-level message clean
+      if (triageMsg.ts) {
+        const contextReply = `*Routing*
+• Usage, configuration, or unclear issues → sales-eng-on-call (group ID: S0AFERD1Y05)
+• SDK issue → sdk-on-call (group ID: S0A4KLQ70S1)
+• Docs, Dashboard, AI issue → docs-on-call (group ID: S0A5HJQC2HE)
+
+*Response*
+1. Tag which on-call team should handle this. To mention a group in Slack, use the format <!subteam^GROUP_ID> with the group ID above. Do NOT include this mention in your first/initial message — only mention the group in a follow-up reply to your own triage message.
+2. Summarize the issue in 1-2 sentences.
+3. Recommend ONE of these actions:
+    a. *Support response* — if resolvable via existing config or docs, draft a reply for the on-call to send the customer. Prefer this over escalating to product changes.
+    b. *Code change needed* — if it's a bug or missing functionality, identify the relevant repo and describe the fix needed.
+4. If the issue is time-sensitive or blocking the customer, flag it as urgent.`;
+
+        await app.client.chat.postMessage({
+          token: config.slack.botToken,
+          channel: config.devin.triageChannel,
+          thread_ts: triageMsg.ts,
+          text: contextReply,
+          unfurl_links: false,
+        });
+
+        console.log("[triage] posted routing & response context as thread reply");
+      }
 
       // try to post a notification in the original Slack thread if we have channel/thread info
       const slack = (issue.slack as Record<string, unknown>) ?? {};
