@@ -70,9 +70,10 @@ function buildTriageContext(issue: Record<string, unknown>): string {
     }
   }
 
-  // attachment urls
-  const attachments = issue.attachment_urls as string[] | undefined;
-  if (attachments?.length) parts.push(`Attachments:\n${attachments.join("\n")}`);
+  // attachment urls — may arrive as a string instead of an array
+  const raw = issue.attachment_urls;
+  const attachments = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
+  if (attachments.length) parts.push(`Attachments:\n${attachments.join("\n")}`);
 
   return parts.length > 0 ? `\n\nIssue context:\n${parts.join("\n")}` : "";
 }
