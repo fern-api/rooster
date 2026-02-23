@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { App } from "@slack/bolt";
 import { config } from "./config";
 import { getOncallMentions } from "./openThreadReminder";
+import { fetchIssueById } from "./pylon";
 
 const TRIAGE_PROMPT = `Triage this customer support issue. Use the exact Slack handles listed below.
 
@@ -90,7 +91,7 @@ function buildTriageContext(issue: Record<string, unknown>): string {
   const slack = issue.slack as Record<string, unknown> | undefined;
   if (slack) {
     const channelId = slack.channel_id as string | undefined;
-    const ts = (slack.thread_ts as string) || (slack.message_ts as string);
+    const ts = slack.message_ts as string | undefined;
     if (channelId && ts) {
       parts.push(`Slack thread: ${buildThreadUrl(channelId, ts)}`);
     }
@@ -130,8 +131,23 @@ export function createWebhookHandler(app: App): (req: Request, res: Response) =>
     try {
       const payload = req.body as Record<string, unknown>;
       console.log("[triage] extracting issue data from payload, top-level keys:", Object.keys(payload));
-      const issue = extractIssueData(payload);
+      let issue = extractIssueData(payload);
       console.log("[triage] extracted issue fields:", Object.keys(issue));
+
+      // if the webhook payload is missing slack data, hydrate from the Pylon API
+      const issueId = issue.id as string | undefined;
+      const hasSlack = issue.slack && typeof issue.slack === "object" &&
+        (issue.slack as Record<string, unknown>).channel_id;
+      if (issueId && !hasSlack) {
+        console.log(`[triage] webhook missing slack data, fetching issue ${issueId} from API`);
+        const fullIssue = await fetchIssueById(issueId);
+        if (fullIssue) {
+          // merge API data under webhook data so webhook values take precedence
+          issue = { ...fullIssue, ...issue, slack: fullIssue.slack ?? issue.slack };
+          console.log("[triage] hydrated issue from API, fields:", Object.keys(issue));
+        }
+      }
+
       const triageContext = buildTriageContext(issue);
       console.log(`[triage] built triage context (${triageContext.length} chars)`);
 
@@ -159,10 +175,10 @@ export function createWebhookHandler(app: App): (req: Request, res: Response) =>
       // try to post a notification in the original Slack thread if we have channel/thread info
       const slack = (issue.slack as Record<string, unknown>) ?? {};
       const channelId = slack.channel_id as string | undefined;
-      const threadTs = (slack.thread_ts as string) || (slack.message_ts as string);
+      const messageTs = slack.message_ts as string | undefined;
 
-      if (channelId && threadTs) {
-        console.log(`[triage] posting notification in original thread: channel=${channelId} thread_ts=${threadTs}`);
+      if (channelId && messageTs) {
+        console.log(`[triage] posting notification in original thread: channel=${channelId} message_ts=${messageTs}`);
         const triageThreadUrl = triageMsg.ts
           ? buildThreadUrl(config.devin.triageChannel, triageMsg.ts)
           : null;
@@ -170,7 +186,7 @@ export function createWebhookHandler(app: App): (req: Request, res: Response) =>
         await app.client.chat.postMessage({
           token: config.slack.botToken,
           channel: channelId,
-          thread_ts: threadTs,
+          thread_ts: messageTs,
           text: triageThreadUrl
             ? `triaging this thread in <#${config.devin.triageChannel}>: ${triageThreadUrl}`
             : `triaging this thread in <#${config.devin.triageChannel}>`,
@@ -179,7 +195,7 @@ export function createWebhookHandler(app: App): (req: Request, res: Response) =>
 
         console.log("[triage] posted notification in original thread");
       } else {
-        console.log(`[triage] no slack thread info found on issue, skipping thread notification (channel_id=${channelId}, thread_ts=${threadTs})`);
+        console.log(`[triage] no slack thread info found on issue, skipping thread notification (channel_id=${channelId}, message_ts=${messageTs})`);
       }
     } catch (error) {
       console.error("[triage] error processing webhook:", error);
