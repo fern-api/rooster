@@ -29,15 +29,41 @@ function buildThreadUrl(channelId: string, ts: string): string {
  * attempts to extract issue data from the webhook payload
  * tries common shapes: data, issue, or top-level fields
  */
+/**
+ * returns true if a value is an unresolved template placeholder like "{{issue.title}}"
+ */
+function isTemplatePlaceholder(value: unknown): boolean {
+  return typeof value === "string" && /\{\{.*\}\}/.test(value);
+}
+
+/**
+ * recursively strips keys whose values are unresolved template placeholders
+ */
+function stripPlaceholders(obj: Record<string, unknown>): Record<string, unknown> {
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (isTemplatePlaceholder(value)) continue;
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const nested = stripPlaceholders(value as Record<string, unknown>);
+      if (Object.keys(nested).length > 0) cleaned[key] = nested;
+    } else {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned;
+}
+
 function extractIssueData(payload: Record<string, unknown>): Record<string, unknown> {
+  let issue: Record<string, unknown>;
   if (payload.data && typeof payload.data === "object") {
-    return payload.data as Record<string, unknown>;
+    issue = payload.data as Record<string, unknown>;
+  } else if (payload.issue && typeof payload.issue === "object") {
+    issue = payload.issue as Record<string, unknown>;
+  } else {
+    // assume top-level fields are the issue data
+    issue = payload;
   }
-  if (payload.issue && typeof payload.issue === "object") {
-    return payload.issue as Record<string, unknown>;
-  }
-  // assume top-level fields are the issue data
-  return payload;
+  return stripPlaceholders(issue);
 }
 
 /**
