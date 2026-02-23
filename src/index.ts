@@ -135,14 +135,7 @@ app.command(config.slashCommand, async ({ ack, respond, command }) => {
 // express server for Pylon webhooks
 const server = express();
 
-// parse JSON with raw body preserved for signature verification
-server.use(
-  express.json({
-    verify: (req, _res, buf) => {
-      (req as express.Request & { rawBody?: string }).rawBody = buf.toString();
-    },
-  })
-);
+server.use(express.json());
 
 server.post("/pylon/webhook", createWebhookHandler(app));
 

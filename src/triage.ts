@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import { Request, Response } from "express";
 import { App } from "@slack/bolt";
 import { config } from "./config";
@@ -21,18 +20,6 @@ Bias towards suggesting an existing configuration or recommending a custom solut
 function buildThreadUrl(channelId: string, ts: string): string {
   const tsForUrl = ts.replace(".", "");
   return `https://buildwithfern.slack.com/archives/${channelId}/p${tsForUrl}`;
-}
-
-/**
- * verifies the Pylon webhook signature using HMAC-SHA256
- */
-function verifySignature(payload: string, signature: string, timestamp: string): boolean {
-  const signingContent = `${timestamp}.${payload}`;
-  const expectedSig = crypto
-    .createHmac("sha256", config.webhook.pylonSecret)
-    .update(signingContent)
-    .digest("hex");
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSig));
 }
 
 /**
@@ -92,25 +79,14 @@ function buildTriageContext(issue: Record<string, unknown>): string {
  */
 export function createWebhookHandler(app: App): (req: Request, res: Response) => Promise<void> {
   return async (req: Request, res: Response): Promise<void> => {
-    const signature = req.headers["pylon-webhook-signature"] as string | undefined;
-    const timestamp = req.headers["pylon-webhook-timestamp"] as string | undefined;
-    const rawBody = (req as Request & { rawBody?: string }).rawBody;
+    console.log("[triage] incoming webhook headers:", JSON.stringify(req.headers, null, 2));
+    console.log("[triage] incoming webhook body:", JSON.stringify(req.body, null, 2));
 
-    if (!signature || !timestamp || !rawBody) {
-      console.log("[triage] webhook rejected: missing signature, timestamp, or body");
-      res.status(401).json({ error: "missing signature headers" });
-      return;
-    }
+    const secret = req.headers["x-webhook-secret"] as string | undefined;
 
-    try {
-      if (!verifySignature(rawBody, signature, timestamp)) {
-        console.log("[triage] webhook rejected: invalid signature");
-        res.status(401).json({ error: "invalid signature" });
-        return;
-      }
-    } catch {
-      console.log("[triage] webhook rejected: signature verification failed");
-      res.status(401).json({ error: "invalid signature" });
+    if (!secret || secret !== config.webhook.pylonSecret) {
+      console.log("[triage] webhook rejected: missing or invalid secret");
+      res.status(401).json({ error: "unauthorized" });
       return;
     }
 
