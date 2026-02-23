@@ -1,17 +1,17 @@
 import { Request, Response } from "express";
 import { App } from "@slack/bolt";
 import { config } from "./config";
-import { getOncallMentions } from "./openThreadReminder";
 import { fetchIssueById } from "./pylon";
 
-const TRIAGE_PROMPT = `Triage this customer support issue. Use the exact Slack handles listed below.
+const TRIAGE_PROMPT = `Triage this customer support issue.
 
 ## Routing
-- Usage, configuration, or unclear issues → tag @sales-eng-on-call
-- Product bugs or feature gaps → tag the product on-call (AI and Dashboard = Docs team)
+- Usage, configuration, or unclear issues → @sales-eng-on-call
+- SDK issue → @sdk-on-call
+- Docs, Dashboard, AI issue → @docs-on-call
 
 ## Response
-1. Tag the appropriate on-call team.
+1. Tag which on-call team should handle this (use Routing).
 2. Summarize the issue in 1-2 sentences.
 3. Recommend ONE of these actions:
    a. **Support response** — if resolvable via existing config or docs, draft a reply for the on-call to send the customer. Prefer this over escalating to product changes.
@@ -151,14 +151,8 @@ export function createWebhookHandler(app: App): (req: Request, res: Response) =>
       const triageContext = buildTriageContext(issue);
       console.log(`[triage] built triage context (${triageContext.length} chars)`);
 
-      // resolve on-call mentions so Devin knows the exact Slack handles
-      console.log("[triage] resolving on-call mentions");
-      const oncallMentions = await getOncallMentions(app);
-      console.log(`[triage] on-call mentions: ${oncallMentions.trim()}`);
-
       const triageMessage =
-        `<@${config.devin.slackUserId}> ${TRIAGE_PROMPT}\n\n` +
-        `On-call handles to use: ${oncallMentions}` +
+        `<@${config.devin.slackUserId}> ${TRIAGE_PROMPT}` +
         triageContext;
 
       // post triage request in #devin-triage-runs
