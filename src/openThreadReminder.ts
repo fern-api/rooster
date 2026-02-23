@@ -199,7 +199,7 @@ function formatIssue(issue: PylonIssue, index: number, options?: FormatOptions):
   // build links - show both slack and pylon when available
   const links: string[] = [];
   if (issue.slack?.channel_id && issue.slack?.message_ts) {
-    const ts = issue.slack.thread_ts || issue.slack.message_ts;
+    const ts = issue.slack.message_ts;
     const slackUrl = getSlackThreadUrl(issue.slack.channel_id, ts);
     links.push(`<${slackUrl}|slack>`);
   }

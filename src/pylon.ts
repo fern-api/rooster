@@ -27,7 +27,6 @@ export interface PylonIssue {
   slack?: {
     channel_id: string;
     message_ts: string;
-    thread_ts?: string;
     workspace_id: string;
   };
 }
@@ -87,6 +86,33 @@ async function fetchAccount(accountId: string): Promise<PylonAccount | null> {
   }
 
   return null;
+}
+
+/**
+ * fetches a single issue by ID from the Pylon API
+ */
+export async function fetchIssueById(issueId: string): Promise<PylonIssue | null> {
+  console.log(`[pylon] fetching issue ${issueId}`);
+  try {
+    const response = await fetch(`${PYLON_API_BASE}/issues/${issueId}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${config.pylon.apiToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      console.log(`[pylon] could not fetch issue ${issueId}: ${response.status}`);
+      return null;
+    }
+
+    const data = (await response.json()) as { data?: PylonIssue };
+    return data.data ?? null;
+  } catch (error) {
+    console.log(`[pylon] error fetching issue ${issueId}:`, error);
+    return null;
+  }
 }
 
 /**
