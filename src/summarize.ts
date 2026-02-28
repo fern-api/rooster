@@ -1,6 +1,7 @@
 import { App } from "@slack/bolt";
 import OpenAI from "openai";
 import { config } from "./config";
+import { fetchThreadMessages, SlackMessage } from "./slackUtils";
 
 const openai = new OpenAI({
   apiKey: config.openai.apiKey,
@@ -14,89 +15,14 @@ const SUMMARIZE_SYSTEM_PROMPT = `You are a helpful assistant that summarizes Sla
 
 Format using Slack mrkdwn (use *bold* for emphasis, bullet points with •). Keep it concise but don't miss important details. If there are no decisions or action items, omit those sections.`;
 
-interface SlackMessage {
-  user?: string;
-  text?: string;
-  ts?: string;
-  bot_id?: string;
-}
-
 /**
- * resolves a Slack user ID to a display name
+ * returns true if a message looks like the "@rooster summarize" command itself
  */
-async function resolveUserName(app: App, userId: string): Promise<string> {
-  try {
-    const result = await app.client.users.info({
-      token: config.slack.botToken,
-      user: userId,
-    });
-    return result.user?.real_name || result.user?.name || userId;
-  } catch {
-    return userId;
-  }
-}
-
-/**
- * replaces <@U...> mentions in message text with real names
- */
-async function resolveUserMentions(app: App, text: string): Promise<string> {
-  const mentionRegex = /<@(U[A-Z0-9]+)>/g;
-  const matches = [...text.matchAll(mentionRegex)];
-
-  if (matches.length === 0) return text;
-
-  const userIds = [...new Set(matches.map((m) => m[1]))];
-  const nameMap = new Map<string, string>();
-
-  await Promise.all(
-    userIds.map(async (id) => {
-      const name = await resolveUserName(app, id);
-      nameMap.set(id, name);
-    })
-  );
-
-  return text.replace(mentionRegex, (_match, userId) => {
-    return nameMap.get(userId) || userId;
-  });
-}
-
-/**
- * fetches all messages in a thread and formats them for summarization
- */
-async function fetchThreadMessages(app: App, channel: string, threadTs: string): Promise<string> {
-  const result = await app.client.conversations.replies({
-    token: config.slack.botToken,
-    channel,
-    ts: threadTs,
-    limit: 200,
-  });
-
-  const messages = (result.messages ?? []) as SlackMessage[];
-
-  // resolve all user names in parallel
-  const userIds = [...new Set(messages.map((m) => m.user).filter(Boolean) as string[])];
-  const nameMap = new Map<string, string>();
-  await Promise.all(
-    userIds.map(async (id) => {
-      const name = await resolveUserName(app, id);
-      nameMap.set(id, name);
-    })
-  );
-
-  const formatted: string[] = [];
-  for (const msg of messages) {
-    // skip the @rooster summarize message itself
-    if (msg.text && /summarize/i.test(msg.text) && msg.text.includes(`<@`)) {
-      const isSummarizeCommand = msg.text.replace(/<@[A-Z0-9]+>/g, "").trim().toLowerCase() === "summarize";
-      if (isSummarizeCommand) continue;
-    }
-
-    const author = msg.user ? (nameMap.get(msg.user) || msg.user) : "bot";
-    const text = msg.text ? await resolveUserMentions(app, msg.text) : "(no text)";
-    formatted.push(`${author}: ${text}`);
-  }
-
-  return formatted.join("\n\n");
+function isSummarizeCommand(msg: SlackMessage): boolean {
+  if (!msg.text) return false;
+  if (!/summarize/i.test(msg.text) || !msg.text.includes("<@")) return false;
+  const stripped = msg.text.replace(/<@[A-Z0-9]+>/g, "").trim().toLowerCase();
+  return stripped === "summarize";
 }
 
 /**
@@ -138,7 +64,9 @@ export async function handleSummarize(app: App, channel: string, threadTs: strin
   }
 
   try {
-    const threadContent = await fetchThreadMessages(app, channel, threadTs);
+    const threadContent = await fetchThreadMessages(app, channel, threadTs, {
+      skipMessage: isSummarizeCommand,
+    });
 
     if (threadContent.trim().length === 0) {
       await app.client.chat.postMessage({
