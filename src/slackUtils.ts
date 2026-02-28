@@ -56,6 +56,43 @@ export async function resolveUserMentions(app: App, text: string): Promise<strin
   });
 }
 
+/**
+ * builds a Slack thread deep-link URL from channel ID and message timestamp
+ */
+export function buildSlackThreadUrl(channelId: string, messageTs: string): string {
+  const tsForUrl = messageTs.replace(".", "");
+  return `https://buildwithfern.slack.com/archives/${channelId}/p${tsForUrl}`;
+}
+
+// Cache for Slack user IDs looked up by email
+const slackUserIdByEmailCache = new Map<string, string>();
+
+/**
+ * looks up a Slack user ID by email, with caching
+ */
+export async function getSlackUserIdByEmail(app: App, email: string): Promise<string | undefined> {
+  if (slackUserIdByEmailCache.has(email)) {
+    return slackUserIdByEmailCache.get(email);
+  }
+
+  try {
+    const result = await app.client.users.lookupByEmail({
+      token: config.slack.botToken,
+      email,
+    });
+
+    const userId = result.user?.id;
+    if (userId) {
+      slackUserIdByEmailCache.set(email, userId);
+      return userId;
+    }
+  } catch (error) {
+    console.log(`Could not find Slack user for ${email}:`, error);
+  }
+
+  return undefined;
+}
+
 export interface FetchThreadOptions {
   /** messages matching this filter will be excluded from the result */
   skipMessage?: (msg: SlackMessage) => boolean;
