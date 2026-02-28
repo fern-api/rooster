@@ -11,9 +11,9 @@ const SUMMARIZE_SYSTEM_PROMPT = `You are a helpful assistant that summarizes Sla
 
 1. Starts with a brief overview of what the thread is about (1-2 sentences).
 2. Highlights any **decisions** that were made (prefix each with "Decision:").
-3. Highlights any **action items** that were identified, including who is responsible if mentioned (prefix each with "Action item:").
+3. Highlights any **action items** that remain unactioned, including who is responsible if mentioned (prefix each with "Action item:").
 
-Format using Slack mrkdwn (use *bold* for emphasis, bullet points with •). Keep it concise but don't miss important details. If there are no decisions or action items, omit those sections.`;
+Format using Slack mrkdwn (use *bold* for emphasis, bullet points with •). Keep it concise but don't miss important details. If there were no decisions made or action items remaining, omit those sections.`;
 
 /**
  * returns true if a message looks like the "@rooster summarize" command itself
