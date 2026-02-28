@@ -1,6 +1,7 @@
 import { App } from "@slack/bolt";
 import { config } from "./config";
 import { getAccountNamesForIssues, getAssigneeEmailsForIssues, getMyIssues, getNewIssues, getOpenNonNewIssues, getUnrespondedIssues, PylonIssue } from "./pylon";
+import { buildSlackThreadUrl, getSlackUserIdByEmail } from "./slackUtils";
 
 const CUSTOMER_ALERTS_CHANNEL = "customer-alerts";
 
@@ -12,8 +13,6 @@ const channelNameCache = new Map<string, string>();
 // Cache for user group IDs looked up by handle
 const userGroupIdCache = new Map<string, string>();
 
-// Cache for Slack user IDs looked up by email
-const slackUserIdCache = new Map<string, string>();
 
 /**
  * finds the channel id for #customer-alerts
@@ -128,40 +127,6 @@ async function getChannelNamesForIssues(app: App, issues: PylonIssue[]): Promise
   return channelNames;
 }
 
-/**
- * builds a slack thread link from channel id and message ts
- */
-function getSlackThreadUrl(channelId: string, messageTs: string): string {
-  // slack deep links use the message ts without the dot
-  const tsForUrl = messageTs.replace(".", "");
-  return `https://buildwithfern.slack.com/archives/${channelId}/p${tsForUrl}`;
-}
-
-/**
- * looks up a Slack user ID by email, with caching
- */
-async function getSlackUserIdByEmail(app: App, email: string): Promise<string | undefined> {
-  if (slackUserIdCache.has(email)) {
-    return slackUserIdCache.get(email);
-  }
-
-  try {
-    const result = await app.client.users.lookupByEmail({
-      token: config.slack.botToken,
-      email,
-    });
-
-    const userId = result.user?.id;
-    if (userId) {
-      slackUserIdCache.set(email, userId);
-      return userId;
-    }
-  } catch (error) {
-    console.log(`Could not find Slack user for ${email}:`, error);
-  }
-
-  return undefined;
-}
 
 /**
  * fetches Slack user IDs for all issue assignees
@@ -200,7 +165,7 @@ function formatIssue(issue: PylonIssue, index: number, options?: FormatOptions):
   const links: string[] = [];
   if (issue.slack?.channel_id && issue.slack?.message_ts) {
     const ts = issue.slack.message_ts;
-    const slackUrl = getSlackThreadUrl(issue.slack.channel_id, ts);
+    const slackUrl = buildSlackThreadUrl(issue.slack.channel_id, ts);
     links.push(`<${slackUrl}|slack>`);
   }
   if (issue.link) {

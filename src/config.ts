@@ -27,6 +27,9 @@ export const config = {
   pylon: {
     apiToken: requireEnv("PYLON_API_TOKEN"),
   },
+  openai: {
+    apiKey: requireEnv("OPENAI_API_KEY"),
+  },
   devin: {
     slackUserId: requireEnv("DEVIN_SLACK_USER_ID"),
     triageChannel: requireEnv("DEVIN_TRIAGE_CHANNEL"),
@@ -43,4 +46,5 @@ console.log("[config] loaded configuration:", {
   webhookPort: config.webhook.port,
   triageChannel: config.devin.triageChannel,
   devinUserId: config.devin.slackUserId,
+  openaiConfigured: !!config.openai.apiKey,
 });

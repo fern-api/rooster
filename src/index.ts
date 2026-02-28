@@ -4,6 +4,7 @@ import cron from "node-cron";
 import { config } from "./config";
 import { getCheckMessage, getCheckMineMessage, sendCheckMessage } from "./openThreadReminder";
 import { createWebhookHandler } from "./triage";
+import { handleSummarize } from "./summarize";
 
 const app = new App({
   token: config.slack.botToken,
@@ -30,6 +31,38 @@ cron.schedule("0 17 * * 1-5", async () => {
   } catch (error) {
     console.error("error sending end-of-day check:", error);
   }
+});
+
+// handle @rooster mentions
+app.event("app_mention", async ({ event }) => {
+  const text = (event.text || "").replace(/<@[A-Z0-9]+>/g, "").trim().toLowerCase();
+  console.log(`[mention] app_mention in channel=${event.channel} text="${text}" thread_ts=${event.thread_ts} ts=${event.ts}`);
+
+  if (text === "summarize") {
+    // summarize only works in threads
+    const threadTs = event.thread_ts;
+    if (!threadTs) {
+      await app.client.chat.postMessage({
+        token: config.slack.botToken,
+        channel: event.channel,
+        thread_ts: event.ts,
+        text: "Please use `@rooster summarize` inside a thread to summarize it.",
+      });
+      return;
+    }
+
+    await handleSummarize(app, event.channel, threadTs, event.ts);
+    return;
+  }
+
+  // unknown mention — show help
+  await app.client.chat.postMessage({
+    token: config.slack.botToken,
+    channel: event.channel,
+    thread_ts: event.thread_ts || event.ts,
+    text: "Available commands:\n" +
+      "\u2022 `@rooster summarize` \u2014 summarize the current thread (use inside a thread)",
+  });
 });
 
 // single rooster command with subcommands

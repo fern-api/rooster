@@ -2,16 +2,9 @@ import { Request, Response } from "express";
 import { App } from "@slack/bolt";
 import { config } from "./config";
 import { fetchIssueById } from "./pylon";
+import { buildSlackThreadUrl } from "./slackUtils";
 
 const TRIAGE_PROMPT = `Triage this customer support issue. See the thread for routing and response guidelines.`;
-
-/**
- * builds a slack thread URL from channel ID and message timestamp
- */
-function buildThreadUrl(channelId: string, ts: string): string {
-  const tsForUrl = ts.replace(".", "");
-  return `https://buildwithfern.slack.com/archives/${channelId}/p${tsForUrl}`;
-}
 
 /**
  * attempts to extract issue data from the webhook payload
@@ -80,7 +73,7 @@ function buildTriageContext(issue: Record<string, unknown>): string {
     const channelId = slack.channel_id as string | undefined;
     const ts = slack.message_ts as string | undefined;
     if (channelId && ts) {
-      parts.push(`Slack thread: ${buildThreadUrl(channelId, ts)}`);
+      parts.push(`Slack thread: ${buildSlackThreadUrl(channelId, ts)}`);
     }
   }
 
@@ -186,7 +179,7 @@ export function createWebhookHandler(app: App): (req: Request, res: Response) =>
       if (channelId && messageTs) {
         console.log(`[triage] posting notification in original thread: channel=${channelId} message_ts=${messageTs}`);
         const triageThreadUrl = triageMsg.ts
-          ? buildThreadUrl(config.devin.triageChannel, triageMsg.ts)
+          ? buildSlackThreadUrl(config.devin.triageChannel, triageMsg.ts)
           : null;
 
         await app.client.chat.postMessage({
